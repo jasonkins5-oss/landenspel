@@ -20,6 +20,7 @@ export function renderIntroScreen(options: IntroScreenOptions): HTMLElement {
       <li>Na ${GRACE_SECONDS} seconden kost elke seconde ${PENALTY_PER_SECOND} punten, tot ${MAX_PENALTY}. Na ${TIME_LIMIT_SECONDS} seconden is de ronde voorbij.</li>
     </ol>
     <p class="muted">De schaal is logaritmisch: een antwoord met een tiende van de topwaarde scoort dus nog flink, een antwoord met een duizendste niet.</p>
+    <p class="muted">Klaar met de dagpuzzel? In de modus <strong>Onbeperkt</strong> speel je zoveel puzzels als je wilt; die tellen niet mee voor je streak.</p>
     <button type="button" class="intro-btn">${options.buttonLabel}</button>
   `;
   const btn = el.querySelector<HTMLButtonElement>('.intro-btn')!;

@@ -114,6 +114,10 @@ Beslissingen:
   puzzel" verhoogt N. Dagelijks blijft de datum-seed.
 - Onbeperkte scores tellen niet mee in de streak, wel in een aparte "beste onbeperkt".
 - **Klaar wanneer:** je eindeloos kunt doorspelen en een puzzel via URL kunt delen.
+- **Status:** klaar (14 november 2026). Schakelaar Dagelijks/Onbeperkt op het keuzescherm; de
+  onbeperkte reeks begint per categorie bij #1 en gaat na een afgeronde puzzel door naar de
+  volgende. `?cat=dieren&game=3` opent een puzzel direct; de deeltekst bevat die link.
+  Onbeperkte scores staan apart (gespeeld, gemiddeld, beste) en raken de streak niet.
 
 ### Fase 8 — Nieuwe look: de doorsnede van de aarde
 

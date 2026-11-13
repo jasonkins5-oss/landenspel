@@ -7,32 +7,52 @@ export interface EndScreenOptions {
   stats: PlayerStats;
   /** Terug naar het keuzescherm. */
   onOtherCategory: () => void;
+  /** Alleen onbeperkt: de volgende puzzel in dezelfde categorie. */
+  onNextPuzzle?: () => void;
+  /** Deelbare link naar deze puzzel (onbeperkt); wordt aan de deeltekst toegevoegd. */
+  shareUrl?: string;
 }
 
-export function shareText(game: GameState): string {
+/** "Dieren #12" (dagpuzzel) of "Dieren, onbeperkt #42". */
+export function puzzleLabel(game: GameState): string {
+  return game.ref.mode === 'daily'
+    ? `${game.category.title} #${puzzleNumber(game.ref.dateKey)}`
+    : `${game.category.title}, onbeperkt #${game.ref.number}`;
+}
+
+export function shareText(game: GameState, shareUrl?: string): string {
   const total = totalScore(game);
-  return [
-    `Landenspel · ${game.category.title} #${puzzleNumber(game.dateKey)}: ${total}/${MAX_TOTAL_SCORE}`,
-    emojiGrid(game),
-  ].join('\n');
+  const lines = [`Landenspel · ${puzzleLabel(game)}: ${total}/${MAX_TOTAL_SCORE}`, emojiGrid(game)];
+  if (shareUrl) lines.push(shareUrl);
+  return lines.join('\n');
 }
 
 export function renderEndScreen(options: EndScreenOptions): HTMLElement {
-  const { game, stats, onOtherCategory } = options;
+  const { game, stats, onOtherCategory, onNextPuzzle, shareUrl } = options;
   const total = totalScore(game);
-  const average = stats.played > 0 ? Math.round(stats.totalScore / stats.played) : 0;
-  const statCells: [string, number][] = [
-    ['Gespeeld', stats.played],
-    ['Gemiddeld', average],
-    ['Beste', stats.best],
-    ['Streak', effectiveStreak(stats, game.dateKey)],
-    ['Langste streak', stats.longestStreak],
-  ];
+  const unlimited = game.ref.mode === 'unlimited';
+  const played = unlimited ? stats.unlimitedPlayed : stats.played;
+  const sum = unlimited ? stats.unlimitedTotalScore : stats.totalScore;
+  const average = played > 0 ? Math.round(sum / played) : 0;
+  const statCells: [string, number][] =
+    game.ref.mode === 'unlimited'
+      ? [
+          ['Gespeeld', played],
+          ['Gemiddeld', average],
+          ['Beste', stats.unlimitedBest],
+        ]
+      : [
+          ['Gespeeld', played],
+          ['Gemiddeld', average],
+          ['Beste', stats.best],
+          ['Streak', effectiveStreak(stats, game.ref.dateKey)],
+          ['Langste streak', stats.longestStreak],
+        ];
 
   const el = document.createElement('div');
   el.className = 'end-screen';
   el.innerHTML = `
-    <h2>${escapeHtml(game.category.title)} #${puzzleNumber(game.dateKey)} afgerond</h2>
+    <h2>${escapeHtml(puzzleLabel(game))} afgerond</h2>
     <p class="end-total"><strong>${total}</strong> / ${MAX_TOTAL_SCORE} punten</p>
     <p class="end-grid" aria-hidden="true">${emojiGrid(game)}</p>
     <ol class="round-summary">
@@ -48,28 +68,37 @@ export function renderEndScreen(options: EndScreenOptions): HTMLElement {
         .join('')}
     </ol>
     <div class="end-actions">
+      ${onNextPuzzle ? '<button type="button" class="next-puzzle-btn">Volgende puzzel</button>' : ''}
       <button type="button" class="share-btn">Deel je score</button>
       <button type="button" class="other-category-btn">Andere categorie</button>
     </div>
     <p class="share-feedback muted" aria-live="polite"></p>
-    <dl class="player-stats" aria-label="Jouw statistieken voor ${escapeHtml(game.category.title)}">
+    <dl class="player-stats" aria-label="Jouw statistieken voor ${escapeHtml(game.category.title)}${unlimited ? ' (onbeperkt)' : ''}">
       ${statCells
         .map(([label, value]) => `<div><dt class="muted">${label}</dt><dd>${value}</dd></div>`)
         .join('')}
     </dl>
-    <p class="muted next-puzzle">Morgen een nieuwe puzzel (om ${nextPuzzleLocalTime()} jouw tijd).</p>
+    ${unlimited ? '' : `<p class="muted next-puzzle">Morgen een nieuwe puzzel (om ${nextPuzzleLocalTime()} jouw tijd).</p>`}
   `;
 
   const shareBtn = el.querySelector<HTMLButtonElement>('.share-btn')!;
   const feedback = el.querySelector<HTMLParagraphElement>('.share-feedback')!;
-  shareBtn.addEventListener('click', () => void share(game, feedback));
-  el.querySelector<HTMLButtonElement>('.other-category-btn')!.addEventListener('click', onOtherCategory);
+  shareBtn.addEventListener('click', () => void share(game, feedback, shareUrl));
+  el.querySelector<HTMLButtonElement>('.other-category-btn')!.addEventListener(
+    'click',
+    onOtherCategory,
+  );
+  if (onNextPuzzle) {
+    const next = el.querySelector<HTMLButtonElement>('.next-puzzle-btn')!;
+    next.addEventListener('click', onNextPuzzle);
+    queueMicrotask(() => next.focus());
+  }
 
   return el;
 }
 
-async function share(game: GameState, feedback: HTMLElement): Promise<void> {
-  const text = shareText(game);
+async function share(game: GameState, feedback: HTMLElement, shareUrl?: string): Promise<void> {
+  const text = shareText(game, shareUrl);
   try {
     if (navigator.share) {
       await navigator.share({ text });

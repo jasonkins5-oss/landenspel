@@ -10,21 +10,32 @@ export interface RoundResult {
   score: RoundScore;
 }
 
+export type GameMode = 'daily' | 'unlimited';
+
+/** Welke puzzel: de dagpuzzel van een datum, of een genummerde puzzel uit de onbeperkte modus. */
+export type PuzzleRef = { mode: 'daily'; dateKey: string } | { mode: 'unlimited'; number: number };
+
 export interface GameState {
   category: Category;
-  dateKey: string;
+  ref: PuzzleRef;
   puzzle: Stat[];
   /** Resultaten van de voltooide rondes, in volgorde. */
   results: RoundResult[];
 }
 
-/** Seed van de dagpuzzel van een categorie. Landen houdt de seed van versie 1. */
-export function puzzleSeed(category: Pick<Category, 'id'>, dateKey: string): string {
-  return category.id === 'landen' ? dateKey : `${category.id}:${dateKey}`;
+/** Seed van een puzzel. De dagpuzzel van Landen houdt de seed van versie 1. */
+export function puzzleSeed(category: Pick<Category, 'id'>, ref: PuzzleRef): string {
+  if (ref.mode === 'unlimited') return `${category.id}:onbeperkt:${ref.number}`;
+  return category.id === 'landen' ? ref.dateKey : `${category.id}:${ref.dateKey}`;
 }
 
-export function createGame(category: Category, dateKey: string): GameState {
-  return { category, dateKey, puzzle: getPuzzle(puzzleSeed(category, dateKey), category.stats), results: [] };
+/** Sleutel waaronder de voortgang van deze puzzel wordt herkend ("2026-11-13" of "42"). */
+export function puzzleKey(ref: PuzzleRef): string {
+  return ref.mode === 'daily' ? ref.dateKey : String(ref.number);
+}
+
+export function createGame(category: Category, ref: PuzzleRef): GameState {
+  return { category, ref, puzzle: getPuzzle(puzzleSeed(category, ref), category.stats), results: [] };
 }
 
 export interface SavedRoundInput {
@@ -38,8 +49,8 @@ export interface SavedRoundInput {
  * (die is deterministisch). Stopt zodra een opgeslagen ronde niet bij de puzzel past,
  * bijvoorbeeld na een datawijziging; de rest wordt dan genegeerd.
  */
-export function restoreGame(category: Category, dateKey: string, saved: readonly SavedRoundInput[]): GameState {
-  let game = createGame(category, dateKey);
+export function restoreGame(category: Category, ref: PuzzleRef, saved: readonly SavedRoundInput[]): GameState {
+  let game = createGame(category, ref);
   for (const round of saved) {
     const stat = currentStat(game);
     if (!stat || stat.id !== round.statId) break;

@@ -9,8 +9,10 @@ const app = document.querySelector<HTMLDivElement>('#app')!;
 const params = new URLSearchParams(location.search);
 // `?date=YYYY-MM-DD` overschrijft de dag, alleen voor handmatig testen.
 const dateKey = params.get('date') ?? utcDateKey();
-// `?cat=dieren` opent direct een categorie.
+// `?cat=dieren` opent direct de dagpuzzel van een categorie; met `&game=42` de onbeperkte puzzel #42.
 const initialCategory = findCategory(params.get('cat')) ?? null;
+const gameParam = Number(params.get('game'));
+const initialGameNumber = Number.isInteger(gameParam) && gameParam > 0 ? gameParam : null;
 
 app.innerHTML = `
   <header class="app-header">
@@ -27,6 +29,18 @@ app.innerHTML = `
   </footer>
 `;
 
+function urlFor(
+  category: { id: string } | null,
+  ref: { mode: 'daily' } | { mode: 'unlimited'; number: number } | null,
+): URL {
+  const url = new URL(location.href);
+  url.searchParams.delete('cat');
+  url.searchParams.delete('game');
+  if (category) url.searchParams.set('cat', category.id);
+  if (ref?.mode === 'unlimited') url.searchParams.set('game', String(ref.number));
+  return url;
+}
+
 startApp({
   root: document.querySelector<HTMLElement>('#game-root')!,
   categories,
@@ -34,10 +48,11 @@ startApp({
   store: browserStore(),
   helpButton: document.querySelector<HTMLElement>('#help-btn'),
   initialCategory,
-  onCategoryChange: (category) => {
-    const url = new URL(location.href);
-    if (category) url.searchParams.set('cat', category.id);
-    else url.searchParams.delete('cat');
-    history.replaceState(null, '', url);
+  initialGameNumber,
+  onPuzzleChange: (category, ref) => history.replaceState(null, '', urlFor(category, ref)),
+  shareUrlFor: (category, ref) => {
+    const url = urlFor(category, ref);
+    url.searchParams.delete('date');
+    return url.toString();
   },
 });

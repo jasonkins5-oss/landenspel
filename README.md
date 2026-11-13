@@ -18,8 +18,9 @@ npm run lint
 npm run build        # tsc --noEmit + vite build → dist/
 ```
 
-Handig bij testen: `http://localhost:5173/?date=2026-11-14` forceert een andere dag en
-`?cat=dieren` opent direct een categorie. De opslag staat in `localStorage` onder de sleutels
+Handig bij testen: `http://localhost:5173/?date=2026-11-14` forceert een andere dag,
+`?cat=dieren` opent direct de dagpuzzel van een categorie en `?cat=dieren&game=3` de onbeperkte
+puzzel #3. De opslag staat in `localStorage` onder de sleutels
 `landenspel:*`, per categorie.
 
 ## Data

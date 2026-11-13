@@ -7,9 +7,11 @@
  */
 
 import type { CategoryId } from '../data/types';
+import type { GameMode, PuzzleRef } from './game';
 
 export const STORAGE_VERSION = 2;
-export const progressKey = (category: CategoryId) => `landenspel:progress:${category}`;
+export const progressKey = (category: CategoryId, mode: GameMode = 'daily') =>
+  mode === 'daily' ? `landenspel:progress:${category}` : `landenspel:onbeperkt:${category}`;
 export const statsKey = (category: CategoryId) => `landenspel:stats:${category}`;
 
 export interface SavedRound {
@@ -18,10 +20,11 @@ export interface SavedRound {
   seconds: number;
 }
 
-/** Voortgang van één dag in één categorie. Oudere dagen worden overschreven. */
+/** Voortgang van één puzzel in één categorie en modus. Een nieuwere puzzel overschrijft de vorige. */
 export interface SavedProgress {
   version: number;
-  dateKey: string;
+  /** "2026-11-13" (dagpuzzel) of "42" (onbeperkte puzzel #42). */
+  puzzleKey: string;
   rounds: SavedRound[];
   /** Epoch-ms waarop de lopende ronde begon, zodat herladen de timer niet terugzet. */
   roundStartedAt: number | null;
@@ -36,6 +39,10 @@ export interface PlayerStats {
   longestStreak: number;
   /** Datum van de laatst voltooide puzzel, als "YYYY-MM-DD". */
   lastCompleted: string | null;
+  /** Onbeperkte modus: telt niet mee voor de streak. */
+  unlimitedPlayed: number;
+  unlimitedTotalScore: number;
+  unlimitedBest: number;
 }
 
 export const EMPTY_STATS: PlayerStats = {
@@ -46,6 +53,9 @@ export const EMPTY_STATS: PlayerStats = {
   currentStreak: 0,
   longestStreak: 0,
   lastCompleted: null,
+  unlimitedPlayed: 0,
+  unlimitedTotalScore: 0,
+  unlimitedBest: 0,
 };
 
 /** Minimale interface, zodat tests een in-memory store kunnen meegeven. */
@@ -72,16 +82,25 @@ function writeJson(store: KeyValueStore, key: string, value: unknown): void {
   }
 }
 
-/** Geeft de opgeslagen voortgang van deze dag en categorie, of null als er niets (bruikbaars) staat. */
-export function loadProgress(store: KeyValueStore, category: CategoryId, dateKey: string): SavedProgress | null {
-  const saved = readJson<SavedProgress>(store, progressKey(category));
-  if (!saved || saved.version !== STORAGE_VERSION || saved.dateKey !== dateKey) return null;
-  if (!Array.isArray(saved.rounds)) return null;
-  return saved;
+/**
+ * Geeft de opgeslagen voortgang van deze puzzel, of null als er niets (bruikbaars) staat.
+ * Met `ref.mode === 'unlimited'` en `number: 0` geeft het de laatst gespeelde onbeperkte
+ * puzzel terug, ongeacht het nummer; zo kan de app daar verdergaan.
+ */
+export function loadProgress(store: KeyValueStore, category: CategoryId, ref: PuzzleRef): SavedProgress | null {
+  const saved = readJson<SavedProgress>(store, progressKey(category, ref.mode));
+  if (!saved || saved.version !== STORAGE_VERSION || !Array.isArray(saved.rounds)) return null;
+  const wanted = ref.mode === 'daily' ? ref.dateKey : ref.number === 0 ? saved.puzzleKey : String(ref.number);
+  return saved.puzzleKey === wanted ? saved : null;
 }
 
-export function saveProgress(store: KeyValueStore, category: CategoryId, progress: SavedProgress): void {
-  writeJson(store, progressKey(category), progress);
+export function saveProgress(
+  store: KeyValueStore,
+  category: CategoryId,
+  mode: GameMode,
+  progress: SavedProgress,
+): void {
+  writeJson(store, progressKey(category, mode), progress);
 }
 
 export function loadStats(store: KeyValueStore, category: CategoryId): PlayerStats {
@@ -108,6 +127,7 @@ export function recordCompletion(stats: PlayerStats, dateKey: string, score: num
   const consecutive = stats.lastCompleted !== null && dayDifference(stats.lastCompleted, dateKey) === 1;
   const currentStreak = consecutive ? stats.currentStreak + 1 : 1;
   return {
+    ...stats,
     version: STORAGE_VERSION,
     played: stats.played + 1,
     totalScore: stats.totalScore + score,
@@ -115,6 +135,17 @@ export function recordCompletion(stats: PlayerStats, dateKey: string, score: num
     currentStreak,
     longestStreak: Math.max(stats.longestStreak, currentStreak),
     lastCompleted: dateKey,
+  };
+}
+
+/** Telt een voltooide onbeperkte puzzel op; de streak blijft onaangeroerd. */
+export function recordUnlimitedCompletion(stats: PlayerStats, score: number): PlayerStats {
+  return {
+    ...stats,
+    version: STORAGE_VERSION,
+    unlimitedPlayed: stats.unlimitedPlayed + 1,
+    unlimitedTotalScore: stats.unlimitedTotalScore + score,
+    unlimitedBest: Math.max(stats.unlimitedBest, score),
   };
 }
 

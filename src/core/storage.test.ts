@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { PuzzleRef } from './game';
 import {
   EMPTY_STATS,
   effectiveStreak,
@@ -7,15 +8,17 @@ import {
   memoryStore,
   progressKey,
   recordCompletion,
+  recordUnlimitedCompletion,
   saveProgress,
   saveStats,
   statsKey,
   type SavedProgress,
 } from './storage';
 
+const day: PuzzleRef = { mode: 'daily', dateKey: '2026-11-13' };
 const progress: SavedProgress = {
   version: 2,
-  dateKey: '2026-11-13',
+  puzzleKey: '2026-11-13',
   rounds: [{ statId: 'population', answerId: 'IND', seconds: 4 }],
   roundStartedAt: 1_000,
 };
@@ -23,19 +26,31 @@ const progress: SavedProgress = {
 describe('voortgang', () => {
   it('slaat op en leest terug voor dezelfde dag en categorie', () => {
     const store = memoryStore();
-    saveProgress(store, 'landen', progress);
-    expect(loadProgress(store, 'landen', '2026-11-13')).toEqual(progress);
-    expect(loadProgress(store, 'dieren', '2026-11-13')).toBeNull();
+    saveProgress(store, 'landen', 'daily', progress);
+    expect(loadProgress(store, 'landen', day)).toEqual(progress);
+    expect(loadProgress(store, 'dieren', day)).toBeNull();
   });
 
   it('geeft null voor een andere dag, een andere versie of kapotte JSON', () => {
     const store = memoryStore();
-    saveProgress(store, 'landen', progress);
-    expect(loadProgress(store, 'landen', '2026-11-14')).toBeNull();
+    saveProgress(store, 'landen', 'daily', progress);
+    expect(loadProgress(store, 'landen', { mode: 'daily', dateKey: '2026-11-14' })).toBeNull();
     store.setItem(progressKey('landen'), JSON.stringify({ ...progress, version: 99 }));
-    expect(loadProgress(store, 'landen', '2026-11-13')).toBeNull();
+    expect(loadProgress(store, 'landen', day)).toBeNull();
     store.setItem(progressKey('landen'), '{niet json');
-    expect(loadProgress(store, 'landen', '2026-11-13')).toBeNull();
+    expect(loadProgress(store, 'landen', day)).toBeNull();
+  });
+
+  it('houdt onbeperkte voortgang apart van de dagpuzzel en vindt de laatste puzzel met nummer 0', () => {
+    const store = memoryStore();
+    const unlimited: SavedProgress = { ...progress, puzzleKey: '42' };
+    saveProgress(store, 'landen', 'daily', progress);
+    saveProgress(store, 'landen', 'unlimited', unlimited);
+    expect(loadProgress(store, 'landen', day)).toEqual(progress);
+    expect(loadProgress(store, 'landen', { mode: 'unlimited', number: 42 })).toEqual(unlimited);
+    expect(loadProgress(store, 'landen', { mode: 'unlimited', number: 43 })).toBeNull();
+    expect(loadProgress(store, 'landen', { mode: 'unlimited', number: 0 })).toEqual(unlimited);
+    expect(loadProgress(store, 'dieren', { mode: 'unlimited', number: 0 })).toBeNull();
   });
 
   it('overleeft een store die gooit', () => {
@@ -48,8 +63,8 @@ describe('voortgang', () => {
       },
       removeItem: () => {},
     };
-    expect(() => saveProgress(broken, 'landen', progress)).not.toThrow();
-    expect(loadProgress(broken, 'landen', '2026-11-13')).toBeNull();
+    expect(() => saveProgress(broken, 'landen', 'daily', progress)).not.toThrow();
+    expect(loadProgress(broken, 'landen', day)).toBeNull();
     expect(loadStats(broken, 'landen')).toEqual(EMPTY_STATS);
   });
 });
@@ -97,6 +112,20 @@ describe('statistieken en streak', () => {
     expect(effectiveStreak(s, '2026-11-14')).toBe(1);
     expect(effectiveStreak(s, '2026-11-15')).toBe(0);
     expect(effectiveStreak(EMPTY_STATS, '2026-11-15')).toBe(0);
+  });
+
+  it('onbeperkte puzzels tellen apart en raken de streak niet', () => {
+    let s = recordCompletion(EMPTY_STATS, '2026-11-13', 1000);
+    s = recordUnlimitedCompletion(s, 3000);
+    s = recordUnlimitedCompletion(s, 2000);
+    expect(s).toMatchObject({
+      played: 1,
+      best: 1000,
+      currentStreak: 1,
+      unlimitedPlayed: 2,
+      unlimitedTotalScore: 5000,
+      unlimitedBest: 3000,
+    });
   });
 });
 
