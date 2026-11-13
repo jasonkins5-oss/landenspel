@@ -82,8 +82,9 @@
 ## Status (13 november 2026)
 
 Fase 0 t/m 5 zijn gebouwd en lokaal gecontroleerd (138 tests, lint, build, handmatig in de browser
-op desktop en 360 px, licht en donker). Nog niet gedaan:
+op desktop en 360 px, licht en donker). De repository staat op GitHub
+(`jasonkins5-oss/landenspel`) en het spel is live via GitHub Actions op
+https://jasonkins5-oss.github.io/landenspel/. Nog niet gedaan:
 
-- De repository naar GitHub pushen en Pages inschakelen; de live URL bestaat dus nog niet.
 - Lighthouse draaien op de live URL.
 - De statistiek "vrouwen in het parlement" ophalen (`npm run data:fetch`); die mislukte eenmalig door een 502.
