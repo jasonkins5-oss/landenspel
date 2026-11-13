@@ -5,18 +5,20 @@ import { effectiveStreak, type PlayerStats } from '../core/storage';
 export interface EndScreenOptions {
   game: GameState;
   stats: PlayerStats;
+  /** Terug naar het keuzescherm. */
+  onOtherCategory: () => void;
 }
 
-function shareText(game: GameState): string {
+export function shareText(game: GameState): string {
   const total = totalScore(game);
   return [
-    `Landenspel #${puzzleNumber(game.dateKey)}: ${total}/${MAX_TOTAL_SCORE}`,
+    `Landenspel · ${game.category.title} #${puzzleNumber(game.dateKey)}: ${total}/${MAX_TOTAL_SCORE}`,
     emojiGrid(game),
   ].join('\n');
 }
 
 export function renderEndScreen(options: EndScreenOptions): HTMLElement {
-  const { game, stats } = options;
+  const { game, stats, onOtherCategory } = options;
   const total = totalScore(game);
   const average = stats.played > 0 ? Math.round(stats.totalScore / stats.played) : 0;
   const statCells: [string, number][] = [
@@ -30,7 +32,7 @@ export function renderEndScreen(options: EndScreenOptions): HTMLElement {
   const el = document.createElement('div');
   el.className = 'end-screen';
   el.innerHTML = `
-    <h2>Puzzel #${puzzleNumber(game.dateKey)} afgerond</h2>
+    <h2>${escapeHtml(game.category.title)} #${puzzleNumber(game.dateKey)} afgerond</h2>
     <p class="end-total"><strong>${total}</strong> / ${MAX_TOTAL_SCORE} punten</p>
     <p class="end-grid" aria-hidden="true">${emojiGrid(game)}</p>
     <ol class="round-summary">
@@ -45,9 +47,12 @@ export function renderEndScreen(options: EndScreenOptions): HTMLElement {
         )
         .join('')}
     </ol>
-    <button type="button" class="share-btn">Deel je score</button>
+    <div class="end-actions">
+      <button type="button" class="share-btn">Deel je score</button>
+      <button type="button" class="other-category-btn">Andere categorie</button>
+    </div>
     <p class="share-feedback muted" aria-live="polite"></p>
-    <dl class="player-stats">
+    <dl class="player-stats" aria-label="Jouw statistieken voor ${escapeHtml(game.category.title)}">
       ${statCells
         .map(([label, value]) => `<div><dt class="muted">${label}</dt><dd>${value}</dd></div>`)
         .join('')}
@@ -58,6 +63,7 @@ export function renderEndScreen(options: EndScreenOptions): HTMLElement {
   const shareBtn = el.querySelector<HTMLButtonElement>('.share-btn')!;
   const feedback = el.querySelector<HTMLParagraphElement>('.share-feedback')!;
   shareBtn.addEventListener('click', () => void share(game, feedback));
+  el.querySelector<HTMLButtonElement>('.other-category-btn')!.addEventListener('click', onOtherCategory);
 
   return el;
 }

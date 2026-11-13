@@ -55,18 +55,18 @@ export interface RoundScore {
   base: number;
   penalty: number;
   total: number;
-  /** Het land heeft geen waarde voor deze statistiek. */
+  /** Het gekozen item heeft geen waarde voor deze statistiek. */
   noData: boolean;
   timedOut: boolean;
 }
 
 /**
- * Score voor één ronde. `iso3` is null als de speler niets heeft ingediend binnen de tijd.
+ * Score voor één ronde. `answerId` is null als de speler niets heeft ingediend binnen de tijd.
  */
-export function scoreRound(stat: Stat, iso3: string | null, seconds: number): RoundScore {
-  const timedOut = iso3 === null || seconds >= TIME_LIMIT_SECONDS;
-  const value = iso3 === null ? undefined : stat.values[iso3];
-  const noData = iso3 !== null && value === undefined;
+export function scoreRound(stat: Stat, answerId: string | null, seconds: number): RoundScore {
+  const timedOut = answerId === null || seconds >= TIME_LIMIT_SECONDS;
+  const value = answerId === null ? undefined : stat.values[answerId];
+  const noData = answerId !== null && value === undefined;
   if (timedOut || noData) {
     return { base: 0, penalty: 0, total: 0, noData, timedOut };
   }

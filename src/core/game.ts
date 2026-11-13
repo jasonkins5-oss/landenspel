@@ -1,29 +1,35 @@
-import type { Country, Stat } from '../data/types';
+import type { Category, Stat } from '../data/types';
 import { getPuzzle, ROUNDS_PER_PUZZLE } from './puzzle';
 import { type RoundScore, scoreRound } from './scoring';
 
 export interface RoundResult {
   stat: Stat;
-  /** null = geen keuze ingediend (tijd verlopen). */
-  iso3: string | null;
+  /** Item-id van het antwoord; null = geen keuze ingediend (tijd verlopen). */
+  answerId: string | null;
   seconds: number;
   score: RoundScore;
 }
 
 export interface GameState {
+  category: Category;
   dateKey: string;
   puzzle: Stat[];
   /** Resultaten van de voltooide rondes, in volgorde. */
   results: RoundResult[];
 }
 
-export function createGame(dateKey: string, stats: readonly Stat[]): GameState {
-  return { dateKey, puzzle: getPuzzle(dateKey, stats), results: [] };
+/** Seed van de dagpuzzel van een categorie. Landen houdt de seed van versie 1. */
+export function puzzleSeed(category: Pick<Category, 'id'>, dateKey: string): string {
+  return category.id === 'landen' ? dateKey : `${category.id}:${dateKey}`;
+}
+
+export function createGame(category: Category, dateKey: string): GameState {
+  return { category, dateKey, puzzle: getPuzzle(puzzleSeed(category, dateKey), category.stats), results: [] };
 }
 
 export interface SavedRoundInput {
   statId: string;
-  iso3: string | null;
+  answerId: string | null;
   seconds: number;
 }
 
@@ -32,18 +38,18 @@ export interface SavedRoundInput {
  * (die is deterministisch). Stopt zodra een opgeslagen ronde niet bij de puzzel past,
  * bijvoorbeeld na een datawijziging; de rest wordt dan genegeerd.
  */
-export function restoreGame(dateKey: string, stats: readonly Stat[], saved: readonly SavedRoundInput[]): GameState {
-  let game = createGame(dateKey, stats);
+export function restoreGame(category: Category, dateKey: string, saved: readonly SavedRoundInput[]): GameState {
+  let game = createGame(category, dateKey);
   for (const round of saved) {
     const stat = currentStat(game);
     if (!stat || stat.id !== round.statId) break;
-    game = submitRound(game, round.iso3, round.seconds, []);
+    game = submitRound(game, round.answerId, round.seconds);
   }
   return game;
 }
 
 export function toSavedRounds(game: GameState): SavedRoundInput[] {
-  return game.results.map((r) => ({ statId: r.stat.id, iso3: r.iso3, seconds: r.seconds }));
+  return game.results.map((r) => ({ statId: r.stat.id, answerId: r.answerId, seconds: r.seconds }));
 }
 
 export function currentRoundIndex(game: GameState): number {
@@ -59,19 +65,11 @@ export function currentStat(game: GameState): Stat | undefined {
 }
 
 /** Scoort de huidige ronde en voegt het resultaat toe. Mag niet worden aangeroepen als de puzzel al klaar is. */
-export function submitRound(
-  game: GameState,
-  iso3: string | null,
-  seconds: number,
-  countries: readonly Country[],
-): GameState {
+export function submitRound(game: GameState, answerId: string | null, seconds: number): GameState {
   const stat = currentStat(game);
   if (!stat) throw new Error('Puzzel is al afgerond');
-  // countries wordt niet gebruikt in de score zelf, maar bevestigt dat de aanroeper
-  // consistente data gebruikt; gereserveerd voor latere uitbreidingen (bv. validatie).
-  void countries;
-  const score = scoreRound(stat, iso3, seconds);
-  const result: RoundResult = { stat, iso3, seconds, score };
+  const score = scoreRound(stat, answerId, seconds);
+  const result: RoundResult = { stat, answerId, seconds, score };
   return { ...game, results: [...game.results, result] };
 }
 

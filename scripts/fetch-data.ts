@@ -6,13 +6,13 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Country, Stat } from '../src/data/types';
 import { spreadOrders } from '../src/core/scoring';
-import { DEFAULT_VALIDATE_OPTIONS, validateData } from '../src/data/validate';
+import { COUNTRY_VALIDATE_OPTIONS, validateData } from '../src/data/validate';
 import { ALIASES, COUNTRY_CODES, NAME_OVERRIDES } from './country-list';
 import { INDICATORS, type IndicatorDef } from './indicators';
 
 const FIRST_YEAR = 2010;
 const LAST_YEAR = new Date().getUTCFullYear();
-const MIN_COVERAGE = DEFAULT_VALIDATE_OPTIONS.minCoverage;
+const MIN_COVERAGE = COUNTRY_VALIDATE_OPTIONS.minCoverage;
 const dataDir = fileURLToPath(new URL('../src/data/', import.meta.url));
 const cacheDir = fileURLToPath(new URL('../.cache/worldbank/', import.meta.url));
 const REFRESH = process.argv.includes('--refresh');
@@ -26,7 +26,7 @@ function buildCountries(): Country[] {
     const known = new Set([nameNl.toLowerCase(), nameEn.toLowerCase()]);
     // Aliassen die gelijk zijn aan een van de namen voegen niets toe.
     const aliases = [...new Set(ALIASES[iso3] ?? [])].filter((a) => !known.has(a.toLowerCase()));
-    return { iso3, iso2, nameNl, nameEn, aliases };
+    return { id: iso3, iso2, nameNl, nameEn, aliases };
   }).sort((a, b) => a.nameNl.localeCompare(b.nameNl, 'nl'));
 }
 
@@ -114,8 +114,8 @@ async function buildStat(def: IndicatorDef, known: Set<string>): Promise<Stat | 
 
 async function main() {
   const countries = buildCountries();
-  const known = new Set(countries.map((c) => c.iso3));
-  const nameOf = new Map(countries.map((c) => [c.iso3, c.nameNl]));
+  const known = new Set(countries.map((c) => c.id));
+  const nameOf = new Map(countries.map((c) => [c.id, c.nameNl]));
   const stats: Stat[] = [];
 
   for (const def of INDICATORS) {
@@ -143,7 +143,7 @@ async function main() {
   }
 
   writeFileSync(`${dataDir}countries.json`, JSON.stringify(countries, null, 2) + '\n');
-  writeFileSync(`${dataDir}stats.json`, JSON.stringify(stats, null, 2) + '\n');
+  writeFileSync(`${dataDir}categories/landen-stats.json`, JSON.stringify(stats, null, 2) + '\n');
   console.log(`\n${countries.length} landen en ${stats.length} statistieken weggeschreven naar src/data/.`);
 }
 

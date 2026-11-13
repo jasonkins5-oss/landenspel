@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { countries, stats } from './index';
-import type { Country, Stat } from './types';
-import { validateData } from './validate';
+import { categories } from './index';
+import type { Category, Country, Stat } from './types';
+import { validateCategory, validateData } from './validate';
 
-const nl: Country = { iso3: 'NLD', iso2: 'NL', nameNl: 'Nederland', nameEn: 'Netherlands', aliases: ['Holland'] };
-const be: Country = { iso3: 'BEL', iso2: 'BE', nameNl: 'België', nameEn: 'Belgium', aliases: [] };
+const nl: Country = { id: 'NLD', iso2: 'NL', nameNl: 'Nederland', nameEn: 'Netherlands', aliases: ['Holland'] };
+const be: Country = { id: 'BEL', iso2: 'BE', nameNl: 'België', nameEn: 'Belgium', aliases: [] };
 
 const stat = (values: Record<string, number>, id = 'x'): Stat => ({
   id,
@@ -35,11 +35,11 @@ describe('validateData', () => {
     ]);
   });
 
-  it('meldt negatieve waarden, onbekende landen en te weinig dekking', () => {
+  it('meldt negatieve waarden, onbekende items en te weinig dekking', () => {
     const errors = validateData([nl, be], [stat({ NLD: -1, XXX: 3 })], { minCoverage: 3, minStats: 1 });
     expect(errors).toContain('Statistiek x: ongeldige waarde -1 voor NLD');
-    expect(errors).toContain('Statistiek x: onbekend land XXX');
-    expect(errors).toContain('Statistiek x: maar 2 landen (minimaal 3)');
+    expect(errors).toContain('Statistiek x: onbekend item XXX');
+    expect(errors).toContain('Statistiek x: maar 2 items (minimaal 3)');
   });
 
   it('meldt een alias die bij twee landen hoort', () => {
@@ -52,8 +52,38 @@ describe('validateData', () => {
   });
 });
 
-describe('gegenereerde data', () => {
-  it('doorstaat de validatie', () => {
-    expect(validateData(countries, stats)).toEqual([]);
+describe('validateCategory', () => {
+  const base: Category = {
+    id: 'dieren',
+    title: 'Test',
+    tagline: '',
+    emoji: '',
+    placeholder: '',
+    noun: 'ding',
+    attribution: { text: '', url: '' },
+    minCoverage: 2,
+    items: [
+      { id: 'a', nameNl: 'A', nameEn: 'A', aliases: [] },
+      { id: 'b', nameNl: 'B', nameEn: 'B', aliases: [] },
+    ],
+    stats: [stat({ a: 2, b: 1 })],
+  };
+
+  it('zet de categorie-id voor elke fout en gebruikt minCoverage van de categorie', () => {
+    expect(validateCategory(base, { minCoverage: 2, minStats: 1 })).toEqual([]);
+    const errors = validateCategory({ ...base, minCoverage: 3 }, { minCoverage: 3, minStats: 1 });
+    expect(errors).toEqual(['[dieren] Statistiek x: maar 2 items (minimaal 3)']);
+  });
+
+  it('controleert ISO-codes alleen voor landen', () => {
+    expect(validateCategory({ ...base, items: [{ ...nl, id: 'nl' }, be] }, { minCoverage: 1, minStats: 1 })).toContain(
+      '[dieren] Land nl: ongeldige iso3',
+    );
+  });
+});
+
+describe('gegenereerde en handgemaakte data', () => {
+  it.each(categories.map((c) => [c.id, c] as const))('%s doorstaat de validatie', (_id, category) => {
+    expect(validateCategory(category)).toEqual([]);
   });
 });

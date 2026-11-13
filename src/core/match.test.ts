@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { countries } from '../data';
-import { CountryMatcher, allowedTypos, editDistance, normalize } from './match';
+import { categories, countries } from '../data';
+import { Matcher, allowedTypos, editDistance, normalize } from './match';
 
-const matcher = new CountryMatcher(countries);
-const first = (q: string) => matcher.search(q)[0]?.country.iso3;
-const resolved = (q: string) => matcher.resolve(q)?.iso3 ?? null;
+const matcher = new Matcher(countries);
+const first = (q: string) => matcher.search(q)[0]?.item.id;
+const resolved = (q: string) => matcher.resolve(q)?.id ?? null;
 
 describe('normalize', () => {
   it.each([
@@ -38,7 +38,7 @@ describe('allowedTypos', () => {
   });
 });
 
-describe('CountryMatcher.search', () => {
+describe('Matcher.search op landen', () => {
   it.each([
     ['nederland', 'NLD'],
     ['Netherlands', 'NLD'],
@@ -65,23 +65,23 @@ describe('CountryMatcher.search', () => {
     ['emiraten', 'ARE'],
     ['dr congo', 'COD'],
     ['hongkong', 'HKG'],
-  ])('"%s" → %s', (query, iso3) => {
-    expect(first(query)).toBe(iso3);
+  ])('"%s" → %s', (query, id) => {
+    expect(first(query)).toBe(id);
   });
 
   it('zet een korte exacte naam vóór een langere met dezelfde prefix', () => {
-    expect(matcher.search('niger').map((m) => m.country.iso3).slice(0, 2)).toEqual(['NER', 'NGA']);
+    expect(matcher.search('niger').map((m) => m.item.id).slice(0, 2)).toEqual(['NER', 'NGA']);
   });
 
   it('zet prefix vóór substring', () => {
-    const ids = matcher.search('guinea').map((m) => m.country.iso3);
+    const ids = matcher.search('guinea').map((m) => m.item.id);
     expect(ids[0]).toBe('GIN');
     expect(ids).toContain('GNQ');
     expect(ids).toContain('PNG');
   });
 
   it('geeft maximaal één treffer per land', () => {
-    const ids = matcher.search('congo').map((m) => m.country.iso3);
+    const ids = matcher.search('congo').map((m) => m.item.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toContain('COG');
     expect(ids).toContain('COD');
@@ -97,14 +97,30 @@ describe('CountryMatcher.search', () => {
   });
 });
 
-describe('CountryMatcher.resolve', () => {
+describe('Matcher.search op dieren', () => {
+  const dieren = new Matcher(categories.find((c) => c.id === 'dieren')!.items);
+  it.each([
+    ['cheetah', 'jachtluipaard'],
+    ['jachtluipaard', 'jachtluipaard'],
+    ['olifant', 'olifant'],
+    ['walvis', 'blauwe-vinvis'],
+    ['pinguin', 'keizerspinguin'],
+    ['pingiun', 'keizerspinguin'],
+    ['schildpad', 'reuzenschildpad'],
+    ['vleermuis', 'buldogvleermuis'],
+  ])('"%s" → %s', (query, id) => {
+    expect(dieren.search(query)[0]?.item.id).toBe(id);
+  });
+});
+
+describe('Matcher.resolve', () => {
   it.each([
     ['Nederland', 'NLD'],
     ['nederalnd', 'NLD'],
     ['VS', 'USA'],
     ['Brazilie', 'BRA'],
-  ])('"%s" → %s', (query, iso3) => {
-    expect(resolved(query)).toBe(iso3);
+  ])('"%s" → %s', (query, id) => {
+    expect(resolved(query)).toBe(id);
   });
 
   it('weigert dubbelzinnige invoer', () => {

@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { countries, stats } from '../data';
-import { rankCountries, rankOf, topN } from './ranking';
+import { rankItems, rankOf, topN } from './ranking';
 
 const population = stats.find((s) => s.id === 'population')!;
 
-describe('rankCountries', () => {
-  const ranking = rankCountries(population, countries);
+describe('rankItems', () => {
+  const ranking = rankItems(population, countries);
 
   it('zet het hoogste land op 1 en nummert door', () => {
     expect(ranking[0]!.rank).toBe(1);
-    expect(ranking[0]!.country.iso3).toBe('IND');
-    expect(ranking[1]!.country.iso3).toBe('CHN');
+    expect(ranking[0]!.item.id).toBe('IND');
+    expect(ranking[1]!.item.id).toBe('CHN');
     expect(ranking.map((r) => r.rank)).toEqual(ranking.map((_, i) => i + 1));
   });
 

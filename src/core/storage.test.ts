@@ -1,40 +1,41 @@
 import { describe, expect, it } from 'vitest';
 import {
   EMPTY_STATS,
-  PROGRESS_KEY,
-  STATS_KEY,
   effectiveStreak,
   loadProgress,
   loadStats,
   memoryStore,
+  progressKey,
   recordCompletion,
   saveProgress,
   saveStats,
+  statsKey,
   type SavedProgress,
 } from './storage';
 
 const progress: SavedProgress = {
-  version: 1,
+  version: 2,
   dateKey: '2026-11-13',
-  rounds: [{ statId: 'population', iso3: 'IND', seconds: 4 }],
+  rounds: [{ statId: 'population', answerId: 'IND', seconds: 4 }],
   roundStartedAt: 1_000,
 };
 
 describe('voortgang', () => {
-  it('slaat op en leest terug voor dezelfde dag', () => {
+  it('slaat op en leest terug voor dezelfde dag en categorie', () => {
     const store = memoryStore();
-    saveProgress(store, progress);
-    expect(loadProgress(store, '2026-11-13')).toEqual(progress);
+    saveProgress(store, 'landen', progress);
+    expect(loadProgress(store, 'landen', '2026-11-13')).toEqual(progress);
+    expect(loadProgress(store, 'dieren', '2026-11-13')).toBeNull();
   });
 
   it('geeft null voor een andere dag, een andere versie of kapotte JSON', () => {
     const store = memoryStore();
-    saveProgress(store, progress);
-    expect(loadProgress(store, '2026-11-14')).toBeNull();
-    store.setItem(PROGRESS_KEY, JSON.stringify({ ...progress, version: 99 }));
-    expect(loadProgress(store, '2026-11-13')).toBeNull();
-    store.setItem(PROGRESS_KEY, '{niet json');
-    expect(loadProgress(store, '2026-11-13')).toBeNull();
+    saveProgress(store, 'landen', progress);
+    expect(loadProgress(store, 'landen', '2026-11-14')).toBeNull();
+    store.setItem(progressKey('landen'), JSON.stringify({ ...progress, version: 99 }));
+    expect(loadProgress(store, 'landen', '2026-11-13')).toBeNull();
+    store.setItem(progressKey('landen'), '{niet json');
+    expect(loadProgress(store, 'landen', '2026-11-13')).toBeNull();
   });
 
   it('overleeft een store die gooit', () => {
@@ -47,26 +48,27 @@ describe('voortgang', () => {
       },
       removeItem: () => {},
     };
-    expect(() => saveProgress(broken, progress)).not.toThrow();
-    expect(loadProgress(broken, '2026-11-13')).toBeNull();
-    expect(loadStats(broken)).toEqual(EMPTY_STATS);
+    expect(() => saveProgress(broken, 'landen', progress)).not.toThrow();
+    expect(loadProgress(broken, 'landen', '2026-11-13')).toBeNull();
+    expect(loadStats(broken, 'landen')).toEqual(EMPTY_STATS);
   });
 });
 
 describe('statistieken en streak', () => {
   it('begint leeg en vult ontbrekende velden aan', () => {
     const store = memoryStore();
-    expect(loadStats(store)).toEqual(EMPTY_STATS);
-    store.setItem(STATS_KEY, JSON.stringify({ version: 1, played: 3 }));
-    expect(loadStats(store)).toEqual({ ...EMPTY_STATS, played: 3 });
+    expect(loadStats(store, 'sport')).toEqual(EMPTY_STATS);
+    store.setItem(statsKey('sport'), JSON.stringify({ version: 2, played: 3 }));
+    expect(loadStats(store, 'sport')).toEqual({ ...EMPTY_STATS, played: 3 });
+    expect(loadStats(store, 'landen')).toEqual(EMPTY_STATS);
   });
 
   it('telt een voltooide puzzel op', () => {
     const s = recordCompletion(EMPTY_STATS, '2026-11-13', 4200);
     expect(s).toMatchObject({ played: 1, totalScore: 4200, best: 4200, currentStreak: 1, longestStreak: 1 });
     const store = memoryStore();
-    saveStats(store, s);
-    expect(loadStats(store)).toEqual(s);
+    saveStats(store, 'landen', s);
+    expect(loadStats(store, 'landen')).toEqual(s);
   });
 
   it('telt dezelfde dag niet dubbel', () => {

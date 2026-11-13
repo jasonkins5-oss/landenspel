@@ -1,28 +1,28 @@
-import type { Country, Stat } from '../data/types';
+import type { Item, Stat } from '../data/types';
 
-export interface RankedCountry {
-  country: Country;
+export interface RankedItem<T extends Item = Item> {
+  item: T;
   value: number;
   /** 1 = hoogste waarde. */
   rank: number;
 }
 
-/** Alle landen met een waarde, van hoog naar laag. Landen zonder data vallen weg. */
-export function rankCountries(stat: Stat, countries: readonly Country[]): RankedCountry[] {
-  const byIso = new Map(countries.map((c) => [c.iso3, c]));
+/** Alle items met een waarde, van hoog naar laag. Items zonder data vallen weg. */
+export function rankItems<T extends Item>(stat: Stat, items: readonly T[]): RankedItem<T>[] {
+  const byId = new Map(items.map((c) => [c.id, c]));
   return Object.entries(stat.values)
-    .flatMap(([iso3, value]) => {
-      const country = byIso.get(iso3);
-      return country ? [{ country, value }] : [];
+    .flatMap(([id, value]) => {
+      const item = byId.get(id);
+      return item ? [{ item, value }] : [];
     })
-    .sort((a, b) => b.value - a.value || a.country.nameNl.localeCompare(b.country.nameNl, 'nl'))
+    .sort((a, b) => b.value - a.value || a.item.nameNl.localeCompare(b.item.nameNl, 'nl'))
     .map((entry, i) => ({ ...entry, rank: i + 1 }));
 }
 
-export function rankOf(ranking: readonly RankedCountry[], iso3: string): RankedCountry | undefined {
-  return ranking.find((r) => r.country.iso3 === iso3);
+export function rankOf<T extends Item>(ranking: readonly RankedItem<T>[], id: string): RankedItem<T> | undefined {
+  return ranking.find((r) => r.item.id === id);
 }
 
-export function topN(ranking: readonly RankedCountry[], n = 5): RankedCountry[] {
+export function topN<T extends Item>(ranking: readonly RankedItem<T>[], n = 5): RankedItem<T>[] {
   return ranking.slice(0, n);
 }

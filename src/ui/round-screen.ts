@@ -1,6 +1,6 @@
-import type { Country } from '../data/types';
+import type { Item } from '../data/types';
 import { TIME_LIMIT_SECONDS } from '../core/scoring';
-import { CountryMatcher, type Match } from '../core/match';
+import { Matcher, type Match } from '../core/match';
 
 export interface RoundScreenHandle {
   el: HTMLElement;
@@ -12,11 +12,13 @@ export interface RoundScreenOptions {
   roundNumber: number;
   totalRounds: number;
   question: string;
-  matcher: CountryMatcher;
+  matcher: Matcher<Item>;
+  /** Placeholder in het invoerveld, bv. "Typ een land…". */
+  placeholder: string;
   /** Epoch-ms waarop de ronde begon. Bij herladen loopt de timer zo gewoon door. */
   startedAt: number;
-  /** Wordt precies één keer aangeroepen: op Enter met een land, bij klikken op een suggestie, of bij het verlopen van de tijd. */
-  onSubmit: (iso3: string | null, seconds: number) => void;
+  /** Wordt precies één keer aangeroepen: op Enter met een antwoord, bij klikken op een suggestie, of bij het verlopen van de tijd. */
+  onSubmit: (answerId: string | null, seconds: number) => void;
 }
 
 /**
@@ -24,7 +26,7 @@ export interface RoundScreenOptions {
  * (pijltjes + Enter, max. 6 suggesties) en een bevestigknop.
  */
 export function renderRoundScreen(options: RoundScreenOptions): RoundScreenHandle {
-  const { roundNumber, totalRounds, question, matcher, startedAt, onSubmit } = options;
+  const { roundNumber, totalRounds, question, matcher, placeholder, startedAt, onSubmit } = options;
 
   const el = document.createElement('div');
   el.className = 'round-screen';
@@ -36,10 +38,10 @@ export function renderRoundScreen(options: RoundScreenOptions): RoundScreenHandl
       <div class="combobox">
         <input
           type="text"
-          name="country"
+          name="answer"
           class="answer-input"
-          placeholder="Typ een land…"
-          aria-label="Typ een land"
+          placeholder="${escapeHtml(placeholder)}"
+          aria-label="${escapeHtml(placeholder.replace(/…$/, ''))}"
           aria-expanded="false"
           aria-autocomplete="list"
           aria-controls="suggestions-list"
@@ -58,24 +60,24 @@ export function renderRoundScreen(options: RoundScreenOptions): RoundScreenHandl
   const form = el.querySelector<HTMLFormElement>('.answer-form')!;
 
   let submitted = false;
-  let matches: Match[] = [];
+  let matches: Match<Item>[] = [];
   let activeIndex = -1;
-  let selected: Country | null = null;
+  let selected: Item | null = null;
   const elapsedSeconds = () => (Date.now() - startedAt) / 1000;
 
-  function finish(iso3: string | null) {
+  function finish(answerId: string | null) {
     if (submitted) return;
     submitted = true;
     clearInterval(timerHandle);
     const seconds = Math.min(elapsedSeconds(), TIME_LIMIT_SECONDS);
-    onSubmit(iso3, seconds);
+    onSubmit(answerId, seconds);
   }
 
   function updateTimer() {
     const remaining = Math.max(0, TIME_LIMIT_SECONDS - elapsedSeconds());
     timerEl.textContent = `${Math.ceil(remaining)}s`;
     timerEl.classList.toggle('timer--low', remaining <= 10);
-    if (remaining <= 0) finish(selected?.iso3 ?? null);
+    if (remaining <= 0) finish(selected?.id ?? null);
   }
   const timerHandle = window.setInterval(updateTimer, 200);
   updateTimer();
@@ -97,20 +99,20 @@ export function renderRoundScreen(options: RoundScreenOptions): RoundScreenHandl
       li.role = 'option';
       li.id = `suggestion-${i}`;
       li.className = 'suggestion' + (i === activeIndex ? ' suggestion--active' : '');
-      li.textContent = m.country.nameNl;
+      li.textContent = m.item.nameNl;
       li.setAttribute('aria-selected', String(i === activeIndex));
       li.addEventListener('mousedown', (e) => {
         // mousedown (niet click) zodat dit vóór de blur van het invoerveld vuurt.
         e.preventDefault();
-        choose(m.country);
+        choose(m.item);
       });
       list.appendChild(li);
     });
   }
 
-  function choose(country: Country) {
-    selected = country;
-    input.value = country.nameNl;
+  function choose(item: Item) {
+    selected = item;
+    input.value = item.nameNl;
     matches = [];
     activeIndex = -1;
     renderSuggestions();
@@ -121,7 +123,7 @@ export function renderRoundScreen(options: RoundScreenOptions): RoundScreenHandl
     selected = null;
     input.classList.remove('answer-input--invalid');
     // De knop blijft actief zodra er tekst staat: een uitgeschakelde submit-knop blokkeert
-    // ook het indienen met Enter. De submit-handler bepaalt of de invoer een land oplevert.
+    // ook het indienen met Enter. De submit-handler bepaalt of de invoer een antwoord oplevert.
     submitBtn.disabled = input.value.trim() === '';
     matches = matcher.search(input.value);
     activeIndex = matches.length > 0 ? 0 : -1;
@@ -147,16 +149,14 @@ export function renderRoundScreen(options: RoundScreenOptions): RoundScreenHandl
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    const country =
-      selected ??
-      (activeIndex >= 0 ? matches[activeIndex]!.country : null) ??
-      matcher.resolve(input.value);
-    if (!country) {
-      // Geen ondubbelzinnig land: kort rood markeren, niets indienen.
+    const item =
+      selected ?? (activeIndex >= 0 ? matches[activeIndex]!.item : null) ?? matcher.resolve(input.value);
+    if (!item) {
+      // Geen ondubbelzinnig antwoord: kort rood markeren, niets indienen.
       input.classList.add('answer-input--invalid');
       return;
     }
-    finish(country.iso3);
+    finish(item.id);
   });
 
   // Klikken buiten de combobox sluit de lijst, zonder iets in te dienen.

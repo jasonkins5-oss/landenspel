@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countries, stats } from '../data';
+import { categories } from '../data';
 import { ROUNDS_PER_PUZZLE } from './puzzle';
 import {
   restoreGame,
@@ -10,27 +10,40 @@ import {
   emojiGrid,
   isComplete,
   MAX_TOTAL_SCORE,
+  puzzleSeed,
   scoreEmoji,
   submitRound,
   totalScore,
 } from './game';
 
+const landen = categories.find((c) => c.id === 'landen')!;
+const dieren = categories.find((c) => c.id === 'dieren')!;
+
 describe('createGame', () => {
   it('begint zonder resultaten, met 7 statistieken', () => {
-    const game = createGame('2026-11-13', stats);
+    const game = createGame(landen, '2026-11-13');
     expect(game.results).toEqual([]);
     expect(game.puzzle).toHaveLength(ROUNDS_PER_PUZZLE);
     expect(isComplete(game)).toBe(false);
     expect(currentRoundIndex(game)).toBe(0);
   });
+
+  it('geeft elke categorie een eigen puzzel op dezelfde dag', () => {
+    expect(puzzleSeed(landen, '2026-11-13')).toBe('2026-11-13');
+    expect(puzzleSeed(dieren, '2026-11-13')).toBe('dieren:2026-11-13');
+    const a = createGame(dieren, '2026-11-13').puzzle.map((s) => s.id);
+    const b = createGame(dieren, '2026-11-13').puzzle.map((s) => s.id);
+    expect(a).toEqual(b);
+    expect(createGame(dieren, '2026-11-14').puzzle.map((s) => s.id)).not.toEqual(a);
+  });
 });
 
 describe('submitRound', () => {
   it('voegt een resultaat toe en gaat naar de volgende ronde', () => {
-    let game = createGame('2026-11-13', stats);
+    let game = createGame(landen, '2026-11-13');
     const stat = currentStat(game)!;
     const best = Object.entries(stat.values).sort(([, a], [, b]) => b - a)[0]![0];
-    game = submitRound(game, best, 3, countries);
+    game = submitRound(game, best, 3);
     expect(game.results).toHaveLength(1);
     expect(game.results[0]!.score.total).toBe(1000);
     expect(currentRoundIndex(game)).toBe(1);
@@ -38,34 +51,34 @@ describe('submitRound', () => {
   });
 
   it('werkt ook zonder keuze (tijd verlopen)', () => {
-    const game = submitRound(createGame('2026-11-13', stats), null, 60, countries);
+    const game = submitRound(createGame(landen, '2026-11-13'), null, 60);
     expect(game.results[0]!.score.total).toBe(0);
     expect(game.results[0]!.score.timedOut).toBe(true);
   });
 
   it('is onveranderlijk: laat de vorige state intact', () => {
-    const game = createGame('2026-11-13', stats);
-    const next = submitRound(game, null, 60, countries);
+    const game = createGame(landen, '2026-11-13');
+    const next = submitRound(game, null, 60);
     expect(game.results).toEqual([]);
     expect(next.results).toHaveLength(1);
   });
 
   it('weigert een ronde na het einde van de puzzel', () => {
-    let game = createGame('2026-11-13', stats);
+    let game = createGame(landen, '2026-11-13');
     for (let i = 0; i < ROUNDS_PER_PUZZLE; i++) {
-      game = submitRound(game, null, 60, countries);
+      game = submitRound(game, null, 60);
     }
     expect(isComplete(game)).toBe(true);
-    expect(() => submitRound(game, null, 60, countries)).toThrow();
+    expect(() => submitRound(game, null, 60)).toThrow();
   });
 });
 
 describe('totalScore', () => {
   it('telt op tot maximaal 7000', () => {
-    let game = createGame('2026-11-13', stats);
+    let game = createGame(dieren, '2026-11-13');
     for (const stat of game.puzzle) {
       const best = Object.entries(stat.values).sort(([, a], [, b]) => b - a)[0]![0];
-      game = submitRound(game, best, 0, countries);
+      game = submitRound(game, best, 0);
     }
     expect(totalScore(game)).toBe(MAX_TOTAL_SCORE);
   });
@@ -85,9 +98,9 @@ describe('scoreEmoji en emojiGrid', () => {
   });
 
   it('bouwt een raster van 7 tekens na een volledige puzzel', () => {
-    let game = createGame('2026-11-13', stats);
+    let game = createGame(landen, '2026-11-13');
     for (let i = 0; i < ROUNDS_PER_PUZZLE; i++) {
-      game = submitRound(game, null, 60, countries);
+      game = submitRound(game, null, 60);
     }
     expect(emojiGrid(game)).toBe('⬛⬛⬛⬛⬛⬛⬛');
   });
@@ -95,18 +108,16 @@ describe('scoreEmoji en emojiGrid', () => {
 
 describe('restoreGame en toSavedRounds', () => {
   it('herstelt een half gespeelde puzzel met dezelfde scores', () => {
-    let game = createGame('2026-11-13', stats);
-    game = submitRound(game, 'NLD', 7, countries);
-    game = submitRound(game, null, 60, countries);
-    const restored = restoreGame('2026-11-13', stats, toSavedRounds(game));
+    let game = createGame(landen, '2026-11-13');
+    game = submitRound(game, 'NLD', 7);
+    game = submitRound(game, null, 60);
+    const restored = restoreGame(landen, '2026-11-13', toSavedRounds(game));
     expect(restored.results.map((r) => r.score)).toEqual(game.results.map((r) => r.score));
     expect(currentRoundIndex(restored)).toBe(2);
   });
 
   it('negeert opgeslagen rondes die niet bij de puzzel passen', () => {
-    const restored = restoreGame('2026-11-13', stats, [
-      { statId: 'bestaat-niet', iso3: 'NLD', seconds: 1 },
-    ]);
+    const restored = restoreGame(landen, '2026-11-13', [{ statId: 'bestaat-niet', answerId: 'NLD', seconds: 1 }]);
     expect(restored.results).toEqual([]);
   });
 });

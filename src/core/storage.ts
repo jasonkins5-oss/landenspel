@@ -1,19 +1,24 @@
 /**
  * Opslag in localStorage. Alle toegang zit in try/catch: zonder opslag (privémodus,
  * geblokkeerde site-data) werkt het spel gewoon, alleen zonder geheugen.
+ *
+ * Voortgang en statistieken worden per categorie bewaard, onder een sleutel met de
+ * categorie-id erin. Versie 2: sinds de categorieën; oudere opslag wordt genegeerd.
  */
 
-export const STORAGE_VERSION = 1;
-export const PROGRESS_KEY = 'landenspel:progress';
-export const STATS_KEY = 'landenspel:stats';
+import type { CategoryId } from '../data/types';
+
+export const STORAGE_VERSION = 2;
+export const progressKey = (category: CategoryId) => `landenspel:progress:${category}`;
+export const statsKey = (category: CategoryId) => `landenspel:stats:${category}`;
 
 export interface SavedRound {
   statId: string;
-  iso3: string | null;
+  answerId: string | null;
   seconds: number;
 }
 
-/** Voortgang van één dag. Oudere dagen worden overschreven. */
+/** Voortgang van één dag in één categorie. Oudere dagen worden overschreven. */
 export interface SavedProgress {
   version: number;
   dateKey: string;
@@ -67,26 +72,26 @@ function writeJson(store: KeyValueStore, key: string, value: unknown): void {
   }
 }
 
-/** Geeft de opgeslagen voortgang van deze dag, of null als er niets (bruikbaars) staat. */
-export function loadProgress(store: KeyValueStore, dateKey: string): SavedProgress | null {
-  const saved = readJson<SavedProgress>(store, PROGRESS_KEY);
+/** Geeft de opgeslagen voortgang van deze dag en categorie, of null als er niets (bruikbaars) staat. */
+export function loadProgress(store: KeyValueStore, category: CategoryId, dateKey: string): SavedProgress | null {
+  const saved = readJson<SavedProgress>(store, progressKey(category));
   if (!saved || saved.version !== STORAGE_VERSION || saved.dateKey !== dateKey) return null;
   if (!Array.isArray(saved.rounds)) return null;
   return saved;
 }
 
-export function saveProgress(store: KeyValueStore, progress: SavedProgress): void {
-  writeJson(store, PROGRESS_KEY, progress);
+export function saveProgress(store: KeyValueStore, category: CategoryId, progress: SavedProgress): void {
+  writeJson(store, progressKey(category), progress);
 }
 
-export function loadStats(store: KeyValueStore): PlayerStats {
-  const saved = readJson<PlayerStats>(store, STATS_KEY);
+export function loadStats(store: KeyValueStore, category: CategoryId): PlayerStats {
+  const saved = readJson<PlayerStats>(store, statsKey(category));
   if (!saved || saved.version !== STORAGE_VERSION) return EMPTY_STATS;
   return { ...EMPTY_STATS, ...saved };
 }
 
-export function saveStats(store: KeyValueStore, stats: PlayerStats): void {
-  writeJson(store, STATS_KEY, stats);
+export function saveStats(store: KeyValueStore, category: CategoryId, stats: PlayerStats): void {
+  writeJson(store, statsKey(category), stats);
 }
 
 function dayDifference(fromKey: string, toKey: string): number {

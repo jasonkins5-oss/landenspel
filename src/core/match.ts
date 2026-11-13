@@ -1,4 +1,4 @@
-import type { Country } from '../data/types';
+import type { Item } from '../data/types';
 
 /** Kleine letters, geen accenten, geen leestekens, enkele spaties. "Sao Tomé" → "sao tome". */
 export function normalize(input: string): string {
@@ -39,8 +39,8 @@ export function allowedTypos(length: number): number {
 
 export type MatchKind = 'exact' | 'prefix' | 'word-prefix' | 'substring' | 'fuzzy';
 
-export interface Match {
-  country: Country;
+export interface Match<T extends Item = Item> {
+  item: T;
   /** Welke naam of alias de treffer gaf. */
   via: string;
   kind: MatchKind;
@@ -54,23 +54,23 @@ const KIND_ORDER: Record<MatchKind, number> = {
   fuzzy: 4,
 };
 
-interface Entry {
-  country: Country;
+interface Entry<T extends Item> {
+  item: T;
   via: string;
   key: string;
 }
 
 /**
- * Index over alle namen en aliassen. Eén keer bouwen; daarna is zoeken goedkoop genoeg
- * voor elke toetsaanslag.
+ * Index over alle namen en aliassen van een lijst items (landen, dieren, …). Eén keer
+ * bouwen; daarna is zoeken goedkoop genoeg voor elke toetsaanslag.
  */
-export class CountryMatcher {
-  private readonly entries: Entry[];
+export class Matcher<T extends Item = Item> {
+  private readonly entries: Entry<T>[];
 
-  constructor(countries: readonly Country[]) {
-    this.entries = countries.flatMap((country) =>
-      [country.nameNl, country.nameEn, ...country.aliases].map((via) => ({
-        country,
+  constructor(items: readonly T[]) {
+    this.entries = items.flatMap((item) =>
+      [item.nameNl, item.nameEn, ...item.aliases].map((via) => ({
+        item,
         via,
         key: normalize(via),
       })),
@@ -78,24 +78,24 @@ export class CountryMatcher {
   }
 
   /**
-   * Beste treffers, maximaal `limit`, één per land. Volgorde: exact, begin van de naam,
+   * Beste treffers, maximaal `limit`, één per item. Volgorde: exact, begin van de naam,
    * begin van een woord, ergens in de naam, en dan tikfouten. Binnen één soort op naamlengte,
    * zodat "Niger" vóór "Nigeria" komt.
    */
-  search(query: string, limit = 6): Match[] {
+  search(query: string, limit = 6): Match<T>[] {
     const q = normalize(query);
     if (!q) return [];
     const typos = allowedTypos(q.length);
 
-    const best = new Map<string, Match>();
-    const consider = (entry: Entry, kind: MatchKind) => {
-      const current = best.get(entry.country.iso3);
+    const best = new Map<string, Match<T>>();
+    const consider = (entry: Entry<T>, kind: MatchKind) => {
+      const current = best.get(entry.item.id);
       if (
         !current ||
         KIND_ORDER[kind] < KIND_ORDER[current.kind] ||
         (KIND_ORDER[kind] === KIND_ORDER[current.kind] && entry.via.length < current.via.length)
       ) {
-        best.set(entry.country.iso3, { country: entry.country, via: entry.via, kind });
+        best.set(entry.item.id, { item: entry.item, via: entry.via, kind });
       }
     };
 
@@ -115,21 +115,21 @@ export class CountryMatcher {
         (a, b) =>
           KIND_ORDER[a.kind] - KIND_ORDER[b.kind] ||
           a.via.length - b.via.length ||
-          a.country.nameNl.localeCompare(b.country.nameNl, 'nl'),
+          a.item.nameNl.localeCompare(b.item.nameNl, 'nl'),
       )
       .slice(0, limit);
   }
 
   /**
-   * Het land dat bij Enter wordt ingediend als de speler niets uit de lijst koos.
+   * Het item dat bij Enter wordt ingediend als de speler niets uit de lijst koos.
    * Alleen een ondubbelzinnige treffer telt: precies één exacte, of anders de enige
-   * treffer die er is. Bij twijfel null, zodat we nooit stil een verkeerd land kiezen.
+   * treffer die er is. Bij twijfel null, zodat we nooit stil een verkeerd antwoord kiezen.
    */
-  resolve(query: string): Country | null {
+  resolve(query: string): T | null {
     const matches = this.search(query, 2);
     const exact = matches.filter((m) => m.kind === 'exact');
-    if (exact.length === 1) return exact[0]!.country;
-    if (exact.length === 0 && matches.length === 1) return matches[0]!.country;
+    if (exact.length === 1) return exact[0]!.item;
+    if (exact.length === 0 && matches.length === 1) return matches[0]!.item;
     return null;
   }
 }

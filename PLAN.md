@@ -79,6 +79,66 @@
 - Een GitHub Actions-workflow die test, bouwt en naar GitHub Pages publiceert.
 - **Klaar wanneer:** de live URL werkt en Lighthouse voor toegankelijkheid minstens 95 scoort.
 
+## Versie 2 — "Graaf naar de kern" (plan, 13 november 2026)
+
+Nieuwe richting, geïnspireerd op de sfeer van Krillion (pixel-art, retro-font, één antwoord
+per vraag, hoe beter je antwoord hoe dieper je zakt). Eigen tekeningen en eigen code; niets
+wordt gekopieerd. De spelregels van versie 1 (log-score, tijdstraf) blijven de basis.
+
+Beslissingen:
+
+- Geen server. Score en statistieken blijven lokaal; delen via de deelknop. Een publieke
+  ranglijst kan later met Supabase.
+- Drie categorieën om mee te starten: **Landen** (World Bank, zoals nu), **Dieren** en
+  **Sport**. Dieren en sport komen uit handgemaakte JSON-bestanden met bronvermelding per
+  vraag, ongeveer 20 vragen per categorie.
+- Makkelijker: alleen bekende statistieken (inwoners, oppervlakte, bbp, …); de obscure
+  World Bank-indicatoren verdwijnen uit de dagelijkse puzzel.
+- Twee spelmodi: **Dagelijks** (één puzzel per dag per categorie) en **Onbeperkt**
+  (willekeurige puzzels, `?game=N` om een puzzel te delen of opnieuw te spelen).
+
+### Fase 6 — Generieke categorieën
+
+- `Stat` krijgt een `category` en een antwoordtype: `country` (autocomplete op landen) of
+  `item` (autocomplete op een lijst van dieren/sporters/teams per vraag).
+- `src/data/categories/{landen,dieren,sport}.json`; de matcher werkt op elke lijst van
+  namen met aliassen.
+- Categoriekeuze op het startscherm; voortgang en statistieken per categorie in localStorage.
+- **Klaar wanneer:** de bestaande tests nog slagen en elke categorie speelbaar is in de dev-server.
+- **Status:** klaar (13 november 2026). Landen 14 statistieken, Dieren 74 dieren / 10 vragen,
+  Sport 10 vragen op de landenlijst. Opslagversie 2, `?cat=` in de URL.
+
+### Fase 7 — Onbeperkt spelen
+
+- `getPuzzle(seed)` werkt al deterministisch; onbeperkt = seed uit `?game=N`, "Volgende
+  puzzel" verhoogt N. Dagelijks blijft de datum-seed.
+- Onbeperkte scores tellen niet mee in de streak, wel in een aparte "beste onbeperkt".
+- **Klaar wanneer:** je eindeloos kunt doorspelen en een puzzel via URL kunt delen.
+
+### Fase 8 — Nieuwe look: de doorsnede van de aarde
+
+- Pixel-art stijl: retro-font (Google Fonts, bijv. "Press Start 2P" voor koppen en "VT323"
+  voor tekst), scanline-sfeer, donkere panelen met lichte rand.
+- Achtergrond: een verticale doorsnede van de aarde als laag-voor-laag getekend canvas
+  (gras/korst → aardmantel → buitenkern → binnenkern), met een dieptemeter rechts en
+  weetjes per laag ("hier is het 1000 °C", "diepste boorgat ooit: 12 km", …).
+- Score → diepte: 1000 punten = de kern. Na elk antwoord graaft een pixel-graafmachine
+  geanimeerd naar de nieuwe diepte (CSS/canvas, respecteert `prefers-reduced-motion`).
+- Tiers per ronde, in plaats van alleen een getal: bijv. **Oppervlakte** (0), **Korst**
+  (< 300), **Mantel** (< 600), **Buitenkern** (< 900), **Binnenkern** (≥ 900), met een
+  korte spreuk per tier.
+- Boven: diepte, voortgangsblokjes (7), score. Onder: timer-cirkel, invoerveld, knop
+  "GRAAF". Daarna een "DIEPER ▼"-knop.
+- Optioneel geluid (uit standaard, aan/uit-knop).
+- **Klaar wanneer:** de hele flow draait in de nieuwe stijl op desktop en 360 px, en
+  het spel nog steeds toegankelijk is (toetsenbord, schermlezer, reduced motion).
+
+### Fase 9 — Afwerking
+
+- Archief van eerdere dagpuzzels (`?date=` wordt een echte functie).
+- Deeltekst per categorie en modus.
+- Lighthouse ≥ 95 toegankelijkheid; deploy via de bestaande workflow.
+
 ## Status (13 november 2026)
 
 Fase 0 t/m 5 zijn gebouwd en lokaal gecontroleerd (138 tests, lint, build, handmatig in de browser

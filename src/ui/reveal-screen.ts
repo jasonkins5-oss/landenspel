@@ -1,23 +1,25 @@
-import type { Country } from '../data/types';
+import type { Item } from '../data/types';
 import type { RoundResult } from '../core/game';
 import { formatValue } from '../core/format';
-import { rankCountries, rankOf, topN } from '../core/ranking';
+import { rankItems, rankOf, topN } from '../core/ranking';
 
 export interface RevealScreenOptions {
   result: RoundResult;
-  countries: readonly Country[];
+  items: readonly Item[];
+  /** Enkelvoud van wat de speler koos, bv. "land" of "dier"; voor de tekst "Geen data bekend voor dit dier". */
+  noun: string;
   onNext: () => void;
   isLastRound: boolean;
 }
 
-/** Onthullingsscherm: gekozen land, rang, scorebalk, top 5 en de tijdstraf. */
+/** Onthullingsscherm: gekozen antwoord, rang, scorebalk, top 5 en de tijdstraf. */
 export function renderRevealScreen(options: RevealScreenOptions): HTMLElement {
-  const { result, countries, onNext, isLastRound } = options;
-  const { stat, iso3, score } = result;
-  const ranking = rankCountries(stat, countries);
+  const { result, items, noun, onNext, isLastRound } = options;
+  const { stat, answerId, score } = result;
+  const ranking = rankItems(stat, items);
   const top5 = topN(ranking, 5);
-  const chosen = iso3 ? rankOf(ranking, iso3) : undefined;
-  const chosenCountry = iso3 ? countries.find((c) => c.iso3 === iso3) : undefined;
+  const chosen = answerId ? rankOf(ranking, answerId) : undefined;
+  const chosenItem = answerId ? items.find((c) => c.id === answerId) : undefined;
 
   const el = document.createElement('div');
   el.className = 'reveal-screen';
@@ -25,13 +27,13 @@ export function renderRevealScreen(options: RevealScreenOptions): HTMLElement {
   const statusLine = score.timedOut
     ? 'Tijd verlopen — geen punten.'
     : score.noData
-      ? `Geen data bekend voor ${chosenCountry?.nameNl ?? 'dit land'} — geen punten.`
+      ? `Geen data bekend voor ${chosenItem?.nameNl ?? `dit ${noun}`} — geen punten.`
       : chosen
-        ? `${chosenCountry!.nameNl}: ${formatValue(stat, chosen.value)} (plek ${chosen.rank} van ${ranking.length})`
-        : 'Geen land gekozen.';
+        ? `${chosenItem!.nameNl}: ${formatValue(stat, chosen.value)} (plek ${chosen.rank} van ${ranking.length})`
+        : `Geen ${noun} gekozen.`;
 
   el.innerHTML = `
-    <h2 class="question">${stat.question}</h2>
+    <h2 class="question">${escapeHtml(stat.question)}</h2>
     <p class="reveal-status">${escapeHtml(statusLine)}</p>
     <div class="score-breakdown">
       <div class="score-bar" role="img" aria-label="${score.total} van 1000 punten">
@@ -46,9 +48,9 @@ export function renderRevealScreen(options: RevealScreenOptions): HTMLElement {
       ${top5
         .map(
           (r) => `
-        <li class="top5__item${iso3 === r.country.iso3 ? ' top5__item--chosen' : ''}">
+        <li class="top5__item${answerId === r.item.id ? ' top5__item--chosen' : ''}">
           <span class="top5__rank">${r.rank}.</span>
-          <span class="top5__name">${escapeHtml(r.country.nameNl)}</span>
+          <span class="top5__name">${escapeHtml(r.item.nameNl)}</span>
           <span class="top5__value muted">${escapeHtml(formatValue(stat, r.value))}</span>
         </li>`,
         )
