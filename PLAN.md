@@ -78,9 +78,9 @@ Krillion telt wat spelers antwoorden. Wij ook, met een startwaarde zodat het van
 
 ## Status (14 november 2026)
 
-Versie 2 staat live op https://jasonkins5-oss.github.io/landenspel/. Versie 3 is gestart.
+Live op https://jasonkins5-oss.github.io/coredive/ (repository `jasonkins5-oss/coredive`, tot 14 november 2026 `landenspel`).
 
-Versie 3 is lokaal gebouwd en getest (nog niet live):
+Versie 3 (CORE DIVE) is gebouwd, getest en live:
 
 - 186 vragen met samen ~103.000 antwoorden uit Wikidata. Labels: Engels, anders "mul" (zonder
   die terugval ontbraken o.a. Toy Story en Up). Vogels en kevers staan nog met hun eerdere lijst
@@ -91,4 +91,4 @@ Versie 3 is lokaal gebouwd en getest (nog niet live):
 - Supabase-project ingericht en getest: lezen werkt, tellen alleen via `record_answer`, direct
   schrijven en onzin-invoer worden geweigerd. Tijdens het testen zijn een handvol antwoorden
   echt geteld (plus één `selftest`-rij); met een prior van 60 nep-antwoorden maakt dat niets uit.
-- Nog te doen voor live: de twee Supabase-waarden als GitHub Actions-variabelen zetten, pushen.
+- Supabase-gegevens staan in `.env.production`; de live site telt antwoorden echt mee (getest).
