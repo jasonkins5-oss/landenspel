@@ -21,7 +21,8 @@ import {
 const landen = categories.find((c) => c.id === 'landen')!;
 const dieren = categories.find((c) => c.id === 'dieren')!;
 const day: PuzzleRef = { mode: 'daily', dateKey: '2026-11-13' };
-const ids = (ref: PuzzleRef, category = dieren) => createGame(category, ref).puzzle.map((s) => s.id);
+const ids = (ref: PuzzleRef, category = dieren) =>
+  createGame(category, ref).puzzle.map((s) => s.id);
 
 describe('createGame', () => {
   it('begint zonder resultaten, met 7 statistieken', () => {
@@ -129,7 +130,9 @@ describe('restoreGame en toSavedRounds', () => {
   });
 
   it('negeert opgeslagen rondes die niet bij de puzzel passen', () => {
-    const restored = restoreGame(landen, day, [{ statId: 'bestaat-niet', answerId: 'NLD', seconds: 1 }]);
+    const restored = restoreGame(landen, day, [
+      { statId: 'bestaat-niet', answerId: 'NLD', seconds: 1 },
+    ]);
     expect(restored.results).toEqual([]);
   });
 });

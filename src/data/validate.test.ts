@@ -3,7 +3,13 @@ import { categories } from './index';
 import type { Category, Country, Stat } from './types';
 import { validateCategory, validateData } from './validate';
 
-const nl: Country = { id: 'NLD', iso2: 'NL', nameNl: 'Nederland', nameEn: 'Netherlands', aliases: ['Holland'] };
+const nl: Country = {
+  id: 'NLD',
+  iso2: 'NL',
+  nameNl: 'Nederland',
+  nameEn: 'Netherlands',
+  aliases: ['Holland'],
+};
 const be: Country = { id: 'BEL', iso2: 'BE', nameNl: 'België', nameEn: 'Belgium', aliases: [] };
 
 const stat = (values: Record<string, number>, id = 'x'): Stat => ({
@@ -36,14 +42,21 @@ describe('validateData', () => {
   });
 
   it('meldt negatieve waarden, onbekende items en te weinig dekking', () => {
-    const errors = validateData([nl, be], [stat({ NLD: -1, XXX: 3 })], { minCoverage: 3, minStats: 1 });
+    const errors = validateData([nl, be], [stat({ NLD: -1, XXX: 3 })], {
+      minCoverage: 3,
+      minStats: 1,
+    });
     expect(errors).toContain('Statistiek x: ongeldige waarde -1 voor NLD');
     expect(errors).toContain('Statistiek x: onbekend item XXX');
     expect(errors).toContain('Statistiek x: maar 2 items (minimaal 3)');
   });
 
   it('meldt een alias die bij twee landen hoort', () => {
-    const errors = validateData([nl, { ...be, aliases: ['holland'] }], [stat({ NLD: 2, BEL: 1 })], opts);
+    const errors = validateData(
+      [nl, { ...be, aliases: ['holland'] }],
+      [stat({ NLD: 2, BEL: 1 })],
+      opts,
+    );
     expect(errors).toEqual(['Naam "holland" hoort bij zowel NLD als BEL']);
   });
 
@@ -76,14 +89,20 @@ describe('validateCategory', () => {
   });
 
   it('controleert ISO-codes alleen voor landen', () => {
-    expect(validateCategory({ ...base, items: [{ ...nl, id: 'nl' }, be] }, { minCoverage: 1, minStats: 1 })).toContain(
-      '[dieren] Land nl: ongeldige iso3',
-    );
+    expect(
+      validateCategory(
+        { ...base, items: [{ ...nl, id: 'nl' }, be] },
+        { minCoverage: 1, minStats: 1 },
+      ),
+    ).toContain('[dieren] Land nl: ongeldige iso3');
   });
 });
 
 describe('gegenereerde en handgemaakte data', () => {
-  it.each(categories.map((c) => [c.id, c] as const))('%s doorstaat de validatie', (_id, category) => {
-    expect(validateCategory(category)).toEqual([]);
-  });
+  it.each(categories.map((c) => [c.id, c] as const))(
+    '%s doorstaat de validatie',
+    (_id, category) => {
+      expect(validateCategory(category)).toEqual([]);
+    },
+  );
 });

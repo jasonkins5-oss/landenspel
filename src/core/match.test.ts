@@ -70,7 +70,12 @@ describe('Matcher.search op landen', () => {
   });
 
   it('zet een korte exacte naam vóór een langere met dezelfde prefix', () => {
-    expect(matcher.search('niger').map((m) => m.item.id).slice(0, 2)).toEqual(['NER', 'NGA']);
+    expect(
+      matcher
+        .search('niger')
+        .map((m) => m.item.id)
+        .slice(0, 2),
+    ).toEqual(['NER', 'NGA']);
   });
 
   it('zet prefix vóór substring', () => {

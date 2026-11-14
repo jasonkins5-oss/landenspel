@@ -87,10 +87,15 @@ function writeJson(store: KeyValueStore, key: string, value: unknown): void {
  * Met `ref.mode === 'unlimited'` en `number: 0` geeft het de laatst gespeelde onbeperkte
  * puzzel terug, ongeacht het nummer; zo kan de app daar verdergaan.
  */
-export function loadProgress(store: KeyValueStore, category: CategoryId, ref: PuzzleRef): SavedProgress | null {
+export function loadProgress(
+  store: KeyValueStore,
+  category: CategoryId,
+  ref: PuzzleRef,
+): SavedProgress | null {
   const saved = readJson<SavedProgress>(store, progressKey(category, ref.mode));
   if (!saved || saved.version !== STORAGE_VERSION || !Array.isArray(saved.rounds)) return null;
-  const wanted = ref.mode === 'daily' ? ref.dateKey : ref.number === 0 ? saved.puzzleKey : String(ref.number);
+  const wanted =
+    ref.mode === 'daily' ? ref.dateKey : ref.number === 0 ? saved.puzzleKey : String(ref.number);
   return saved.puzzleKey === wanted ? saved : null;
 }
 
@@ -124,7 +129,8 @@ function dayDifference(fromKey: string, toKey: string): number {
  */
 export function recordCompletion(stats: PlayerStats, dateKey: string, score: number): PlayerStats {
   if (stats.lastCompleted === dateKey) return stats;
-  const consecutive = stats.lastCompleted !== null && dayDifference(stats.lastCompleted, dateKey) === 1;
+  const consecutive =
+    stats.lastCompleted !== null && dayDifference(stats.lastCompleted, dateKey) === 1;
   const currentStreak = consecutive ? stats.currentStreak + 1 : 1;
   return {
     ...stats,

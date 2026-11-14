@@ -105,7 +105,11 @@ export class Matcher<T extends Item = Item> {
       else if (key.startsWith(q)) consider(entry, 'prefix');
       else if (key.includes(` ${q}`)) consider(entry, 'word-prefix');
       else if (key.includes(q)) consider(entry, 'substring');
-      else if (typos > 0 && Math.abs(key.length - q.length) <= typos && editDistance(key, q) <= typos) {
+      else if (
+        typos > 0 &&
+        Math.abs(key.length - q.length) <= typos &&
+        editDistance(key, q) <= typos
+      ) {
         consider(entry, 'fuzzy');
       }
     }

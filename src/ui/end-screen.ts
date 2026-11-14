@@ -1,6 +1,8 @@
 import { emojiGrid, MAX_TOTAL_SCORE, totalScore, type GameState } from '../core/game';
+import { EARTH_RADIUS_KM, formatDepth, layerAt, tierFor, unitsToKm } from '../core/depth';
 import { puzzleNumber } from '../core/rng';
 import { effectiveStreak, type PlayerStats } from '../core/storage';
+import { escapeHtml } from './html';
 
 export interface EndScreenOptions {
   game: GameState;
@@ -22,7 +24,12 @@ export function puzzleLabel(game: GameState): string {
 
 export function shareText(game: GameState, shareUrl?: string): string {
   const total = totalScore(game);
-  const lines = [`Landenspel · ${puzzleLabel(game)}: ${total}/${MAX_TOTAL_SCORE}`, emojiGrid(game)];
+  const depth = formatDepth(unitsToKm(total));
+  const lines = [
+    `Landenspel · ${puzzleLabel(game)}: ${total}/${MAX_TOTAL_SCORE}`,
+    `⛏️ ${depth} diep`,
+    emojiGrid(game),
+  ];
   if (shareUrl) lines.push(shareUrl);
   return lines.join('\n');
 }
@@ -30,6 +37,8 @@ export function shareText(game: GameState, shareUrl?: string): string {
 export function renderEndScreen(options: EndScreenOptions): HTMLElement {
   const { game, stats, onOtherCategory, onNextPuzzle, shareUrl } = options;
   const total = totalScore(game);
+  const depthKm = unitsToKm(total);
+  const layer = layerAt(total);
   const unlimited = game.ref.mode === 'unlimited';
   const played = unlimited ? stats.unlimitedPlayed : stats.played;
   const sum = unlimited ? stats.unlimitedTotalScore : stats.totalScore;
@@ -37,48 +46,53 @@ export function renderEndScreen(options: EndScreenOptions): HTMLElement {
   const statCells: [string, number][] =
     game.ref.mode === 'unlimited'
       ? [
-          ['Gespeeld', played],
-          ['Gemiddeld', average],
-          ['Beste', stats.unlimitedBest],
+          ['GESPEELD', played],
+          ['GEMIDDELD', average],
+          ['BESTE', stats.unlimitedBest],
         ]
       : [
-          ['Gespeeld', played],
-          ['Gemiddeld', average],
-          ['Beste', stats.best],
-          ['Streak', effectiveStreak(stats, game.ref.dateKey)],
-          ['Langste streak', stats.longestStreak],
+          ['GESPEELD', played],
+          ['GEMIDDELD', average],
+          ['BESTE', stats.best],
+          ['STREAK', effectiveStreak(stats, game.ref.dateKey)],
+          ['LANGSTE', stats.longestStreak],
         ];
 
   const el = document.createElement('div');
   el.className = 'end-screen';
   el.innerHTML = `
-    <h2>${escapeHtml(puzzleLabel(game))} afgerond</h2>
-    <p class="end-total"><strong>${total}</strong> / ${MAX_TOTAL_SCORE} punten</p>
-    <p class="end-grid" aria-hidden="true">${emojiGrid(game)}</p>
-    <ol class="round-summary">
-      ${game.results
-        .map(
-          (r, i) => `
-        <li>
-          <span class="round-summary__num muted">${i + 1}.</span>
-          <span class="round-summary__question">${escapeHtml(r.stat.question)}</span>
-          <span class="round-summary__score">${r.score.total}</span>
-        </li>`,
-        )
-        .join('')}
-    </ol>
-    <div class="end-actions">
-      ${onNextPuzzle ? '<button type="button" class="next-puzzle-btn">Volgende puzzel</button>' : ''}
-      <button type="button" class="share-btn">Deel je score</button>
-      <button type="button" class="other-category-btn">Andere categorie</button>
-    </div>
-    <p class="share-feedback muted" aria-live="polite"></p>
-    <dl class="player-stats" aria-label="Jouw statistieken voor ${escapeHtml(game.category.title)}${unlimited ? ' (onbeperkt)' : ''}">
-      ${statCells
-        .map(([label, value]) => `<div><dt class="muted">${label}</dt><dd>${value}</dd></div>`)
-        .join('')}
-    </dl>
-    ${unlimited ? '' : `<p class="muted next-puzzle">Morgen een nieuwe puzzel (om ${nextPuzzleLocalTime()} jouw tijd).</p>`}
+    <section class="panel end-panel">
+      <h2 class="end-title">${escapeHtml(puzzleLabel(game))} afgerond</h2>
+      <p class="end-total"><strong>${total}</strong> / ${MAX_TOTAL_SCORE}</p>
+      <p class="end-depth">Je groef <strong>${escapeHtml(formatDepth(depthKm))}</strong> diep, tot in de
+        <strong>${escapeHtml(layer.name.toLowerCase())}</strong>.
+        ${total >= MAX_TOTAL_SCORE ? 'Je hebt het middelpunt bereikt!' : `Het middelpunt ligt op ${escapeHtml(formatDepth(EARTH_RADIUS_KM))}.`}</p>
+      <p class="end-grid" aria-hidden="true">${emojiGrid(game)}</p>
+      <ol class="round-summary">
+        ${game.results
+          .map((r, i) => {
+            const tier = tierFor(r.score.total);
+            return `
+          <li>
+            <span class="round-summary__num">${i + 1}</span>
+            <span class="round-summary__question">${escapeHtml(r.stat.question)}</span>
+            <span class="round-summary__tier" style="--tier-color: ${tier.color}">${escapeHtml(tier.name)}</span>
+            <span class="round-summary__score">${r.score.total}</span>
+          </li>`;
+          })
+          .join('')}
+      </ol>
+      <div class="end-actions">
+        ${onNextPuzzle ? '<button type="button" class="btn btn--primary next-puzzle-btn">VOLGENDE PUZZEL ▼</button>' : ''}
+        <button type="button" class="btn ${onNextPuzzle ? 'btn--ghost' : 'btn--primary'} share-btn">DEEL JE SCORE</button>
+        <button type="button" class="btn btn--ghost other-category-btn">ANDERE CATEGORIE</button>
+      </div>
+      <p class="share-feedback" aria-live="polite"></p>
+      <dl class="player-stats" aria-label="Jouw statistieken voor ${escapeHtml(game.category.title)}${unlimited ? ' (onbeperkt)' : ''}">
+        ${statCells.map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('')}
+      </dl>
+      ${unlimited ? '' : `<p class="next-puzzle">Morgen een nieuwe puzzel (om ${nextPuzzleLocalTime()} jouw tijd).</p>`}
+    </section>
   `;
 
   const shareBtn = el.querySelector<HTMLButtonElement>('.share-btn')!;
@@ -88,11 +102,11 @@ export function renderEndScreen(options: EndScreenOptions): HTMLElement {
     'click',
     onOtherCategory,
   );
-  if (onNextPuzzle) {
-    const next = el.querySelector<HTMLButtonElement>('.next-puzzle-btn')!;
-    next.addEventListener('click', onNextPuzzle);
-    queueMicrotask(() => next.focus());
-  }
+  const first = el.querySelector<HTMLButtonElement>(
+    onNextPuzzle ? '.next-puzzle-btn' : '.share-btn',
+  )!;
+  if (onNextPuzzle) first.addEventListener('click', onNextPuzzle);
+  queueMicrotask(() => first.focus({ preventScroll: true }));
 
   return el;
 }
@@ -122,10 +136,4 @@ function nextPuzzleLocalTime(): string {
   const next = new Date();
   next.setUTCHours(24, 0, 0, 0);
   return next.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
-}
-
-function escapeHtml(s: string): string {
-  const div = document.createElement('div');
-  div.textContent = s;
-  return div.innerHTML;
 }

@@ -136,6 +136,13 @@ Beslissingen:
 - Optioneel geluid (uit standaard, aan/uit-knop).
 - **Klaar wanneer:** de hele flow draait in de nieuwe stijl op desktop en 360 px, en
   het spel nog steeds toegankelijk is (toetsenbord, schermlezer, reduced motion).
+- **Status:** klaar (14 november 2026). Diepte-model in `src/core/depth.ts` (7000 punten =
+  6.371 km, zes lagen met ankerpunten, 13 weetjes, 6 tiers: Mis gegraven, Zandkorrel, Kiezel,
+  Rotsblok, Magma, Kern). Scène in `src/ui/scene.ts` met canvas-pixeltexturen, HUD in
+  `src/ui/hud.ts`, geluid in `src/ui/sound.ts` (standaard uit). Lettertypes Press Start 2P en
+  VT323 lokaal via `@fontsource` (geen verzoeken naar Google). Eén vast donker paneelthema.
+  Tijdens het testen gevonden en opgelost: klikken op GRAAF sloot eerst de suggestielijst, waardoor
+  een gemarkeerde suggestie verloren ging. Nog niet gedaan: Lighthouse-meting op de live URL.
 
 ### Fase 9 — Afwerking
 

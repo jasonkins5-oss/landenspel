@@ -35,7 +35,12 @@ export function puzzleKey(ref: PuzzleRef): string {
 }
 
 export function createGame(category: Category, ref: PuzzleRef): GameState {
-  return { category, ref, puzzle: getPuzzle(puzzleSeed(category, ref), category.stats), results: [] };
+  return {
+    category,
+    ref,
+    puzzle: getPuzzle(puzzleSeed(category, ref), category.stats),
+    results: [],
+  };
 }
 
 export interface SavedRoundInput {
@@ -49,7 +54,11 @@ export interface SavedRoundInput {
  * (die is deterministisch). Stopt zodra een opgeslagen ronde niet bij de puzzel past,
  * bijvoorbeeld na een datawijziging; de rest wordt dan genegeerd.
  */
-export function restoreGame(category: Category, ref: PuzzleRef, saved: readonly SavedRoundInput[]): GameState {
+export function restoreGame(
+  category: Category,
+  ref: PuzzleRef,
+  saved: readonly SavedRoundInput[],
+): GameState {
   let game = createGame(category, ref);
   for (const round of saved) {
     const stat = currentStat(game);

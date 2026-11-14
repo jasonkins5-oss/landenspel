@@ -1,8 +1,12 @@
 # Landenspel
 
-Dagelijks browser-schattingsspel: 7 vragen per dag van de vorm *"Welk land heeft de hoogste …?"*.
-Typ een land, en scoor op basis van hoe dicht de waarde van jouw land bij de nummer 1 ligt
-(log-schaal), min een tijdstraf. Geen backend: Vite + TypeScript, alle data in JSON.
+Dagelijks browser-schattingsspel in pixelstijl: 7 vragen van de vorm *"Welk land heeft de meeste …?"*
+of *"Welk dier is het snelst?"*, in drie categorieën (Landen, Dieren, Sport), dagelijks of onbeperkt.
+Typ één antwoord en scoor op basis van hoe dicht de waarde ervan bij de nummer 1 ligt
+(log-schaal), min een tijdstraf. Elk punt graaft je dieper de aarde in; een perfecte puzzel
+eindigt in het middelpunt. Geen backend: Vite + TypeScript, alle data in JSON.
+
+Lettertypes: Press Start 2P en VT323 (SIL Open Font License), lokaal meegeleverd via `@fontsource`.
 
 De spelregels en de fasering staan in [PLAN.md](PLAN.md).
 

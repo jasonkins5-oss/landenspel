@@ -19,7 +19,10 @@ export function rankItems<T extends Item>(stat: Stat, items: readonly T[]): Rank
     .map((entry, i) => ({ ...entry, rank: i + 1 }));
 }
 
-export function rankOf<T extends Item>(ranking: readonly RankedItem<T>[], id: string): RankedItem<T> | undefined {
+export function rankOf<T extends Item>(
+  ranking: readonly RankedItem<T>[],
+  id: string,
+): RankedItem<T> | undefined {
   return ranking.find((r) => r.item.id === id);
 }
 

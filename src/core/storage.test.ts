@@ -80,7 +80,13 @@ describe('statistieken en streak', () => {
 
   it('telt een voltooide puzzel op', () => {
     const s = recordCompletion(EMPTY_STATS, '2026-11-13', 4200);
-    expect(s).toMatchObject({ played: 1, totalScore: 4200, best: 4200, currentStreak: 1, longestStreak: 1 });
+    expect(s).toMatchObject({
+      played: 1,
+      totalScore: 4200,
+      best: 4200,
+      currentStreak: 1,
+      longestStreak: 1,
+    });
     const store = memoryStore();
     saveStats(store, 'landen', s);
     expect(loadStats(store, 'landen')).toEqual(s);

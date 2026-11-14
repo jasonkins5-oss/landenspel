@@ -57,7 +57,11 @@ export function validateCountries(countries: readonly Country[]): string[] {
   return errors;
 }
 
-export function validateStats(stats: readonly Stat[], items: readonly Item[], options: ValidateOptions): string[] {
+export function validateStats(
+  stats: readonly Stat[],
+  items: readonly Item[],
+  options: ValidateOptions,
+): string[] {
   const errors: string[] = [];
   const ids = new Set(items.map((i) => i.id));
   const statIds = new Set<string>();

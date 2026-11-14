@@ -1,6 +1,7 @@
 import type { Item } from '../data/types';
 import { TIME_LIMIT_SECONDS } from '../core/scoring';
 import { Matcher, type Match } from '../core/match';
+import { escapeHtml } from './html';
 
 export interface RoundScreenHandle {
   el: HTMLElement;
@@ -21,9 +22,12 @@ export interface RoundScreenOptions {
   onSubmit: (answerId: string | null, seconds: number) => void;
 }
 
+/** Omtrek van de timer-ring (r = 20 in een viewBox van 48). */
+const RING = 2 * Math.PI * 20;
+
 /**
- * Bouwt het rondescherm: vraag, aftellende timer, invoerveld met autocomplete
- * (pijltjes + Enter, max. 6 suggesties) en een bevestigknop.
+ * Rondescherm: vraag bovenaan, onderaan een timer-ring, een invoerveld met autocomplete
+ * (pijltjes + Enter, max. 6 suggesties, die boven het veld openklappen) en de GRAAF-knop.
  */
 export function renderRoundScreen(options: RoundScreenOptions): RoundScreenHandle {
   const { roundNumber, totalRounds, question, matcher, placeholder, startedAt, onSubmit } = options;
@@ -31,10 +35,20 @@ export function renderRoundScreen(options: RoundScreenOptions): RoundScreenHandl
   const el = document.createElement('div');
   el.className = 'round-screen';
   el.innerHTML = `
-    <p class="round-counter muted">Ronde ${roundNumber} van ${totalRounds}</p>
-    <h2 class="question">${escapeHtml(question)}</h2>
-    <p class="timer" role="timer" aria-label="Resterende tijd"></p>
-    <form class="answer-form" autocomplete="off">
+    <section class="panel question-panel">
+      <p class="eyebrow">VRAAG ${roundNumber} VAN ${totalRounds}</p>
+      <h2 class="question">${escapeHtml(question)}</h2>
+      <p class="hint" aria-hidden="true">▼ hoe beter je antwoord, hoe dieper je graaft ▼</p>
+    </section>
+    <div class="round-gap" aria-hidden="true"></div>
+    <form class="dock" autocomplete="off">
+      <div class="timer" role="timer" aria-label="Resterende tijd">
+        <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+          <circle class="timer__track" cx="24" cy="24" r="20"/>
+          <circle class="timer__ring" cx="24" cy="24" r="20" stroke-dasharray="${RING}" stroke-dashoffset="0"/>
+        </svg>
+        <span class="timer__text"></span>
+      </div>
       <div class="combobox">
         <input
           type="text"
@@ -46,18 +60,22 @@ export function renderRoundScreen(options: RoundScreenOptions): RoundScreenHandl
           aria-autocomplete="list"
           aria-controls="suggestions-list"
           role="combobox"
+          spellcheck="false"
+          autocapitalize="off"
         />
         <ul class="suggestions" id="suggestions-list" role="listbox" aria-label="Suggesties" hidden></ul>
       </div>
-      <button type="submit" class="submit-btn" disabled>Bevestigen</button>
+      <button type="submit" class="btn btn--primary submit-btn" disabled>GRAAF</button>
     </form>
   `;
 
-  const timerEl = el.querySelector<HTMLParagraphElement>('.timer')!;
+  const timerEl = el.querySelector<HTMLElement>('.timer')!;
+  const timerText = el.querySelector<HTMLElement>('.timer__text')!;
+  const ring = el.querySelector<SVGCircleElement>('.timer__ring')!;
   const input = el.querySelector<HTMLInputElement>('.answer-input')!;
   const list = el.querySelector<HTMLUListElement>('.suggestions')!;
   const submitBtn = el.querySelector<HTMLButtonElement>('.submit-btn')!;
-  const form = el.querySelector<HTMLFormElement>('.answer-form')!;
+  const form = el.querySelector<HTMLFormElement>('.dock')!;
 
   let submitted = false;
   let matches: Match<Item>[] = [];
@@ -75,7 +93,8 @@ export function renderRoundScreen(options: RoundScreenOptions): RoundScreenHandl
 
   function updateTimer() {
     const remaining = Math.max(0, TIME_LIMIT_SECONDS - elapsedSeconds());
-    timerEl.textContent = `${Math.ceil(remaining)}s`;
+    timerText.textContent = `${Math.ceil(remaining)}`;
+    ring.setAttribute('stroke-dashoffset', String(RING * (1 - remaining / TIME_LIMIT_SECONDS)));
     timerEl.classList.toggle('timer--low', remaining <= 10);
     if (remaining <= 0) finish(selected?.id ?? null);
   }
@@ -150,26 +169,31 @@ export function renderRoundScreen(options: RoundScreenOptions): RoundScreenHandl
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     const item =
-      selected ?? (activeIndex >= 0 ? matches[activeIndex]!.item : null) ?? matcher.resolve(input.value);
+      selected ??
+      (activeIndex >= 0 ? matches[activeIndex]!.item : null) ??
+      matcher.resolve(input.value);
     if (!item) {
       // Geen ondubbelzinnig antwoord: kort rood markeren, niets indienen.
+      input.classList.remove('answer-input--invalid');
+      void input.offsetWidth; // opnieuw starten van de schud-animatie
       input.classList.add('answer-input--invalid');
       return;
     }
     finish(item.id);
   });
 
-  // Klikken buiten de combobox sluit de lijst, zonder iets in te dienen.
-  const combobox = el.querySelector<HTMLElement>('.combobox')!;
+  // Klikken buiten het invoerblok sluit de lijst, zonder iets in te dienen. Klikken binnen het
+  // blok (ook op GRAAF) laat de lijst staan: anders gaat de gemarkeerde suggestie verloren
+  // voordat het formulier wordt ingediend.
   const onDocumentClick = (e: MouseEvent) => {
-    if (combobox.contains(e.target as Node)) return;
+    if (form.contains(e.target as Node)) return;
     matches = [];
     activeIndex = -1;
     renderSuggestions();
   };
   document.addEventListener('click', onDocumentClick);
 
-  queueMicrotask(() => input.focus());
+  queueMicrotask(() => input.focus({ preventScroll: true }));
 
   return {
     el,
@@ -178,10 +202,4 @@ export function renderRoundScreen(options: RoundScreenOptions): RoundScreenHandl
       document.removeEventListener('click', onDocumentClick);
     },
   };
-}
-
-function escapeHtml(s: string): string {
-  const div = document.createElement('div');
-  div.textContent = s;
-  return div.innerHTML;
 }

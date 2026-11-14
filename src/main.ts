@@ -1,3 +1,5 @@
+import '@fontsource/press-start-2p/400.css';
+import '@fontsource/vt323/400.css';
 import './style.css';
 import { categories, findCategory } from './data';
 import { utcDateKey } from './core/rng';
@@ -15,12 +17,11 @@ const gameParam = Number(params.get('game'));
 const initialGameNumber = Number.isInteger(gameParam) && gameParam > 0 ? gameParam : null;
 
 app.innerHTML = `
-  <header class="app-header">
-    <h1><a href="./" class="home-link">Landenspel</a></h1>
-    <button type="button" class="help-btn" id="help-btn" aria-label="Uitleg">?</button>
-  </header>
+  <div id="scene-root"></div>
+  <div class="scanlines" aria-hidden="true"></div>
+  <div id="hud-root"></div>
   <main id="game-root" aria-live="polite"></main>
-  <footer class="app-footer muted">
+  <footer class="app-footer">
     Data: ${categories
       .map((c) => c.attribution)
       .filter((a, i, all) => all.findIndex((b) => b.url === a.url) === i)
@@ -43,10 +44,11 @@ function urlFor(
 
 startApp({
   root: document.querySelector<HTMLElement>('#game-root')!,
+  hudRoot: document.querySelector<HTMLElement>('#hud-root')!,
+  sceneRoot: document.querySelector<HTMLElement>('#scene-root')!,
   categories,
   dateKey,
   store: browserStore(),
-  helpButton: document.querySelector<HTMLElement>('#help-btn'),
   initialCategory,
   initialGameNumber,
   onPuzzleChange: (category, ref) => history.replaceState(null, '', urlFor(category, ref)),

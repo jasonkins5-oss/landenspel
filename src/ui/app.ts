@@ -29,14 +29,20 @@ import { renderIntroScreen } from './intro-screen';
 import { renderRoundScreen, type RoundScreenHandle } from './round-screen';
 import { renderRevealScreen } from './reveal-screen';
 import { renderEndScreen } from './end-screen';
+import { createScene } from './scene';
+import { createHud } from './hud';
+import { createSound } from './sound';
 
 export interface AppOptions {
+  /** Hier komen de schermen. */
   root: HTMLElement;
+  /** Hier komt de HUD (bovenbalk). */
+  hudRoot: HTMLElement;
+  /** Hier komt de achtergrondscène (doorsnede van de aarde). */
+  sceneRoot: HTMLElement;
   categories: readonly Category[];
   dateKey: string;
   store: KeyValueStore;
-  /** Knop in de header die de uitleg opent; optioneel. */
-  helpButton?: HTMLElement | null;
   /** Categorie om direct mee te beginnen (uit de URL); anders het keuzescherm. */
   initialCategory?: Category | null;
   /** Onbeperkte puzzel om direct mee te beginnen (`?game=N`); vereist initialCategory. */
@@ -49,12 +55,14 @@ export interface AppOptions {
 
 /** De onbeperkte reeks begint per categorie bij #1, zodat spelers dezelfde nummers delen. */
 const FIRST_UNLIMITED_GAME = 1;
+/** Hoe lang de graafanimatie duurt voordat de tier verschijnt (zie ook style.css). */
+const DIG_MS = 900;
 
 /**
  * Drijft keuzescherm → (ronde → onthulling → …) → eindscherm aan en bewaart de voortgang per
  * categorie en modus na elke stap. Bij herladen gaat het spel verder waar het was; een al
  * voltooide dagpuzzel toont direct het eindscherm, een voltooide onbeperkte puzzel ook (met
- * "Volgende puzzel").
+ * "Volgende puzzel"). De scène graaft mee: diepte = totaalscore.
  */
 export function startApp(options: AppOptions): void {
   const { root, categories, dateKey, store } = options;
@@ -63,10 +71,33 @@ export function startApp(options: AppOptions): void {
   /** Het scherm waarnaar de help-knop terugkeert. */
   let resume: () => void = () => showCategories();
 
+  const scene = createScene();
+  options.sceneRoot.replaceChildren(scene.el);
+  const sound = createSound(store);
+  const hud = createHud({
+    soundOn: sound.on,
+    onHome: () => showCategories(),
+    onHelp: () => showHelp(),
+    onToggleSound: () => hud.setSound(sound.toggle()),
+  });
+  options.hudRoot.replaceChildren(hud.el);
+
   function mount(el: HTMLElement) {
     activeRound?.destroy();
     activeRound = null;
     root.replaceChildren(el);
+    window.scrollTo({ top: 0 });
+  }
+
+  function showHud(game: GameState) {
+    hud.setPlaying(true);
+    hud.update({
+      depthUnits: totalScore(game),
+      score: totalScore(game),
+      results: game.results.map((r) => r.score.total),
+      totalRounds: game.puzzle.length,
+      currentRound: game.results.length,
+    });
   }
 
   /** De puzzel die een categorie in deze modus nu "aan de beurt" heeft. */
@@ -106,6 +137,9 @@ export function startApp(options: AppOptions): void {
   function showCategories() {
     resume = showCategories;
     options.onPuzzleChange?.(null, null);
+    hud.setPlaying(false);
+    scene.setDepth(0, false);
+    scene.setView('surface', true);
     mount(
       renderCategoryScreen({
         categories,
@@ -115,13 +149,20 @@ export function startApp(options: AppOptions): void {
         onModeChange: (next) => {
           mode = next;
           showCategories();
+          root.querySelector<HTMLButtonElement>(`[data-mode="${next}"]`)?.focus();
         },
       }),
     );
   }
 
   function showHelp() {
-    mount(renderIntroScreen({ buttonLabel: 'Terug naar het spel', onContinue: () => resume() }));
+    const back = resume;
+    mount(
+      renderIntroScreen({
+        buttonLabel: 'TERUG NAAR HET SPEL',
+        onContinue: () => back(),
+      }),
+    );
   }
 
   function play(category: Category, ref: PuzzleRef) {
@@ -131,6 +172,10 @@ export function startApp(options: AppOptions): void {
     const loaded = loadGame(category, ref);
     const fresh = loaded.fresh;
     let { game, roundStartedAt } = loaded;
+
+    scene.setDepth(totalScore(game), false);
+    scene.setView('dig', true);
+    showHud(game);
 
     function persist() {
       saveProgress(store, category.id, ref.mode, {
@@ -160,6 +205,8 @@ export function startApp(options: AppOptions): void {
         return;
       }
       resume = showRound;
+      showHud(game);
+      scene.setView('dig', true);
       if (roundStartedAt === null) {
         roundStartedAt = Date.now();
         persist();
@@ -172,26 +219,38 @@ export function startApp(options: AppOptions): void {
         placeholder: category.placeholder,
         startedAt: roundStartedAt,
         onSubmit: (answerId, seconds) => {
+          const before = totalScore(game);
           game = submitRound(game, answerId, seconds);
           roundStartedAt = null;
           if (isComplete(game)) recordStats();
           persist();
-          showReveal();
+          sound.dig();
+          scene.setDepth(totalScore(game), true);
+          scene.burst();
+          window.setTimeout(
+            () => sound.reveal(game.results[game.results.length - 1]!.score.total),
+            DIG_MS,
+          );
+          showReveal(before, true);
         },
       });
-      activeRound?.destroy();
+      mount(handle.el);
       activeRound = handle;
-      root.replaceChildren(handle.el);
     }
 
-    function showReveal() {
-      resume = showReveal;
+    function showReveal(depthBefore?: number, animate = false) {
+      resume = () => showReveal();
       const result = game.results[game.results.length - 1]!;
+      const after = totalScore(game);
+      showHud(game);
       mount(
         renderRevealScreen({
           result,
           items: category.items,
           noun: category.noun,
+          depthBefore: depthBefore ?? after - result.score.total,
+          depthAfter: after,
+          animate,
           isLastRound: isComplete(game),
           onNext: () => (isComplete(game) ? showEnd() : showRound()),
         }),
@@ -200,6 +259,7 @@ export function startApp(options: AppOptions): void {
 
     function showEnd() {
       resume = showEnd;
+      showHud(game);
       mount(
         renderEndScreen({
           game,
@@ -219,8 +279,6 @@ export function startApp(options: AppOptions): void {
     else showRound();
   }
 
-  options.helpButton?.addEventListener('click', showHelp);
-
   const start = () => {
     const { initialCategory, initialGameNumber } = options;
     if (initialCategory && initialGameNumber)
@@ -231,9 +289,11 @@ export function startApp(options: AppOptions): void {
 
   // Eerste bezoek: eerst de uitleg. De timer van ronde 1 start pas daarna.
   if (!hasSeenIntro(store)) {
+    hud.setPlaying(false);
+    scene.setView('surface', false);
     mount(
       renderIntroScreen({
-        buttonLabel: 'Start',
+        buttonLabel: 'BEGIN TE GRAVEN ▼',
         onContinue: () => {
           markIntroSeen(store);
           start();
