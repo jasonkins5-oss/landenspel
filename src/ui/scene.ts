@@ -147,12 +147,12 @@ export function createScene(): Scene {
   digger.innerHTML = DIGGER;
   world.appendChild(digger);
 
-  // Dieptemeter rechts: laaggrenzen en de "JIJ"-markering.
+  // Dieptemeter rechts: laaggrenzen en de "YOU"-markering.
   const gauge = document.createElement('div');
   gauge.className = 'scene__gauge';
   gauge.style.top = `${SKY_PX}px`;
   gauge.style.height = `${MAX_DEPTH_UNITS * PX_PER_UNIT}px`;
-  // De bovenste laag krijgt geen label: daar staat de JIJ-markering aan het begin.
+  // De bovenste laag krijgt geen label: daar staat de YOU-markering aan het begin.
   gauge.innerHTML = LAYERS.slice(1)
     .map(
       (l) => `
@@ -163,7 +163,7 @@ export function createScene(): Scene {
     .join('');
   const you = document.createElement('div');
   you.className = 'scene__you';
-  you.innerHTML = '<span>JIJ ◄</span>';
+  you.innerHTML = '<span>YOU ◄</span>';
   gauge.appendChild(you);
   world.appendChild(gauge);
 

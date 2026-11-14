@@ -1,17 +1,20 @@
-import type { Category } from '../data/types';
-import { Matcher } from '../core/match';
+import type { PromptAnswers, PromptMeta } from '../core/answers';
+import { AnswerMatcher } from '../core/match';
+import { mostCommon, deepCuts, rarityOf, type AnswerCounts } from '../core/rarity';
+import type { CountsBackend } from '../core/counts';
 import {
+  addResult,
   createGame,
-  currentStat,
+  currentPrompt,
   isComplete,
   puzzleKey,
   restoreGame,
-  submitRound,
-  toSavedRounds,
+  timedOutResult,
   totalScore,
   type GameMode,
   type GameState,
   type PuzzleRef,
+  type RoundResult,
 } from '../core/game';
 import {
   hasSeenIntro,
@@ -26,8 +29,8 @@ import {
   saveProgress,
   saveStats,
 } from '../core/storage';
-import { archiveDates, puzzleNumber } from '../core/rng';
-import { renderCategoryScreen, type ArchiveDay, type CategoryStatus } from './category-screen';
+import { archiveDates, hashString, mulberry32, puzzleNumber } from '../core/rng';
+import { renderStartScreen, type ArchiveDay, type ModeStatus } from './start-screen';
 import { renderIntroScreen } from './intro-screen';
 import { renderRoundScreen, type RoundScreenHandle } from './round-screen';
 import { renderRevealScreen } from './reveal-screen';
@@ -43,51 +46,41 @@ export interface AppOptions {
   hudRoot: HTMLElement;
   /** Hier komt de achtergrondscène (doorsnede van de aarde). */
   sceneRoot: HTMLElement;
-  categories: readonly Category[];
+  prompts: readonly PromptMeta[];
+  loadAnswers: (id: string) => Promise<PromptAnswers>;
+  counts: CountsBackend;
   dateKey: string;
   store: KeyValueStore;
-  /** Categorie om direct mee te beginnen (uit de URL); anders het keuzescherm. */
-  initialCategory?: Category | null;
-  /** Onbeperkte puzzel om direct mee te beginnen (`?game=N`); vereist initialCategory. */
-  initialGameNumber?: number | null;
-  /** Archiefpuzzel om direct mee te beginnen (`?archief=YYYY-MM-DD`); vereist initialCategory. */
-  initialArchiveDate?: string | null;
+  /** Puzzel om direct mee te beginnen (uit de URL); anders het startscherm. */
+  initialRef?: PuzzleRef | null;
   /** Wordt aangeroepen als de gekozen puzzel wisselt, zodat de URL mee kan veranderen. */
-  onPuzzleChange?: (category: Category | null, ref: PuzzleRef | null) => void;
-  /** Geeft de deelbare link voor een onbeperkte of archiefpuzzel. */
-  shareUrlFor?: (category: Category, ref: PuzzleRef) => string;
+  onPuzzleChange?: (ref: PuzzleRef | null) => void;
+  /** Geeft de deelbare link voor een puzzel. */
+  shareUrlFor?: (ref: PuzzleRef) => string;
 }
 
-/** De onbeperkte reeks begint per categorie bij #1, zodat spelers dezelfde nummers delen. */
-const FIRST_UNLIMITED_GAME = 1;
 /** Hoe lang de graafanimatie duurt voordat de tier verschijnt (zie ook style.css). */
 const DIG_MS = 900;
 
 /**
- * Drijft keuzescherm → (ronde → onthulling → …) → eindscherm aan en bewaart de voortgang per
- * categorie en modus na elke stap. Bij herladen gaat het spel verder waar het was; een al
- * voltooide dagpuzzel toont direct het eindscherm, een voltooide onbeperkte puzzel ook (met
- * "Volgende puzzel"). De scène graaft mee: diepte = totaalscore.
+ * Drijft startscherm → (ronde → onthulling → …) → eindscherm aan en bewaart de voortgang per
+ * modus na elke stap. Bij herladen gaat het spel verder waar het was. De scène graaft mee:
+ * diepte = totaalscore.
  */
 export function startApp(options: AppOptions): void {
-  const { root, categories, dateKey, store } = options;
+  const { root, prompts, dateKey, store, counts } = options;
   let activeRound: RoundScreenHandle | null = null;
-  let mode: GameMode = options.initialGameNumber
-    ? 'unlimited'
-    : options.initialArchiveDate
-      ? 'archive'
-      : 'daily';
-  /** De categorie die het archief laat zien. */
-  let archiveCategory: Category = options.initialCategory ?? categories[0]!;
+  let mode: GameMode = options.initialRef?.mode ?? 'daily';
   /** Het scherm waarnaar de help-knop terugkeert. */
-  let resume: () => void = () => showCategories();
+  let resume: () => void = () => showStart();
+  const matchers = new Map<string, AnswerMatcher>();
 
   const scene = createScene();
   options.sceneRoot.replaceChildren(scene.el);
   const sound = createSound(store);
   const hud = createHud({
     soundOn: sound.on,
-    onHome: () => showCategories(),
+    onHome: () => showStart(),
     onHelp: () => showHelp(),
     onToggleSound: () => hud.setSound(sound.toggle()),
   });
@@ -100,155 +93,164 @@ export function startApp(options: AppOptions): void {
     window.scrollTo({ top: 0 });
   }
 
+  function matcherFor(answers: PromptAnswers): AnswerMatcher {
+    let m = matchers.get(answers.id);
+    if (!m) {
+      m = new AnswerMatcher(answers.answers);
+      matchers.set(answers.id, m);
+    }
+    return m;
+  }
+
   function showHud(game: GameState) {
     hud.setPlaying(true);
     hud.update({
       depthUnits: totalScore(game),
       score: totalScore(game),
-      results: game.results.map((r) => r.score.total),
+      results: game.results.map((r) => r.points),
       totalRounds: game.puzzle.length,
       currentRound: game.results.length,
     });
   }
 
-  /** De puzzel die een categorie in deze modus nu "aan de beurt" heeft. */
-  function currentRef(category: Category, forMode: GameMode): PuzzleRef {
-    // Het archief kiest zelf een datum; vanuit de categoriekaarten is het altijd vandaag.
-    if (forMode !== 'unlimited') return { mode: 'daily', dateKey };
-    const saved = loadProgress(store, category.id, { mode: 'unlimited', number: 0 });
-    if (!saved) return { mode: 'unlimited', number: FIRST_UNLIMITED_GAME };
-    // Een afgeronde puzzel: de volgende staat klaar.
+  /** De puzzel die in deze modus nu "aan de beurt" is (niet voor het archief). */
+  function currentRef(forMode: Exclude<GameMode, 'archive'>): PuzzleRef {
+    if (forMode === 'daily') return { mode: 'daily', dateKey };
+    const saved = loadProgress(store, { mode: 'unlimited', number: 0 });
+    if (!saved) return { mode: 'unlimited', number: 1 };
     const number = Number(saved.puzzleKey);
-    const done = restoreGame(category, { mode: 'unlimited', number }, saved.rounds);
+    const done = restoreGame({ mode: 'unlimited', number }, prompts, saved.results);
     return { mode: 'unlimited', number: isComplete(done) ? number + 1 : number };
   }
 
-  function loadGame(
-    category: Category,
-    ref: PuzzleRef,
-  ): { game: GameState; roundStartedAt: number | null; fresh: boolean } {
-    const saved = loadProgress(store, category.id, ref);
-    const game = saved ? restoreGame(category, ref, saved.rounds) : createGame(category, ref);
+  function loadGame(ref: PuzzleRef): {
+    game: GameState;
+    roundStartedAt: number | null;
+    fresh: boolean;
+  } {
+    const saved = loadProgress(store, ref);
+    const game = saved ? restoreGame(ref, prompts, saved.results) : createGame(ref, prompts);
     // Een opgeslagen starttijd geldt alleen voor de ronde die nog open stond.
     const roundStartedAt =
-      saved && saved.rounds.length === game.results.length ? saved.roundStartedAt : null;
+      saved && saved.results.length === game.results.length ? saved.roundStartedAt : null;
     return { game, roundStartedAt, fresh: !saved };
   }
 
-  function statusOf(category: Category, forMode: GameMode): CategoryStatus {
-    const ref = currentRef(category, forMode);
-    const { game } = loadGame(category, ref);
+  function modeStatus(forMode: Exclude<GameMode, 'archive'>): ModeStatus {
+    const ref = currentRef(forMode);
+    const { game } = loadGame(ref);
+    const title =
+      ref.mode === 'daily'
+        ? `Today’s dive #${puzzleNumber(ref.dateKey)}`
+        : `Dive #${puzzleKey(ref)}`;
+    if (isComplete(game))
+      return { title, status: `Done: ${totalScore(game)} points`, action: 'SEE RESULT' };
+    if (game.results.length > 0)
+      return {
+        title,
+        status: `Prompt ${game.results.length + 1} of ${game.puzzle.length}`,
+        action: 'CONTINUE',
+      };
     return {
-      roundsPlayed: game.results.length,
-      totalRounds: game.puzzle.length,
-      score: totalScore(game),
-      puzzleNumber: ref.mode === 'unlimited' ? ref.number : undefined,
+      title,
+      status: `${game.puzzle.length} prompts · 30 seconds each`,
+      action: 'BEGIN DESCENT',
     };
   }
 
-  function archiveDays(category: Category): ArchiveDay[] {
-    const history = loadHistory(store, category.id);
-    return archiveDates(dateKey).map((d) => {
-      // Er is per categorie hooguit één archiefpuzzel "bezig"; loadProgress geeft null voor de rest.
-      const progress = loadProgress(store, category.id, { mode: 'archive', dateKey: d });
-      return {
-        dateKey: d,
-        number: puzzleNumber(d),
-        score: history[d] ?? null,
-        roundsPlayed: progress?.rounds.length ?? 0,
-      };
-    });
+  function archiveDays(): ArchiveDay[] {
+    const history = loadHistory(store);
+    return archiveDates(dateKey).map((d) => ({
+      dateKey: d,
+      number: puzzleNumber(d),
+      score: history[d] ?? null,
+      roundsPlayed: loadProgress(store, { mode: 'archive', dateKey: d })?.results.length ?? 0,
+    }));
   }
 
-  function showCategories() {
-    resume = showCategories;
-    options.onPuzzleChange?.(null, null);
+  function showStart() {
+    resume = showStart;
+    options.onPuzzleChange?.(null);
     hud.setPlaying(false);
     scene.setDepth(0, false);
     scene.setView('surface', true);
     mount(
-      renderCategoryScreen({
-        categories,
+      renderStartScreen({
         mode,
-        statusOf,
-        onSelect: (category, forMode) => play(category, currentRef(category, forMode)),
+        status: modeStatus(mode === 'archive' ? 'daily' : mode),
+        archiveDays: mode === 'archive' ? archiveDays() : [],
+        promptCount: prompts.length,
         onModeChange: (next) => {
           mode = next;
-          showCategories();
+          showStart();
           root.querySelector<HTMLButtonElement>(`[data-mode="${next}"]`)?.focus();
         },
-        archive: {
-          category: archiveCategory,
-          days: archiveDays(archiveCategory),
-          onCategory: (category) => {
-            archiveCategory = category;
-            showCategories();
-            root.querySelector<HTMLButtonElement>(`[data-archive-cat="${category.id}"]`)?.focus();
-          },
-          onSelect: (d) => play(archiveCategory, { mode: 'archive', dateKey: d }),
-        },
+        onStart: () => play(currentRef(mode === 'archive' ? 'daily' : mode)),
+        onArchiveSelect: (d) => play({ mode: 'archive', dateKey: d }),
       }),
     );
   }
 
   function showHelp() {
     const back = resume;
-    mount(
-      renderIntroScreen({
-        buttonLabel: 'TERUG NAAR HET SPEL',
-        onContinue: () => back(),
-      }),
-    );
+    mount(renderIntroScreen({ buttonLabel: 'BACK TO THE DIVE', onContinue: () => back() }));
   }
 
-  function play(category: Category, ref: PuzzleRef) {
+  function play(ref: PuzzleRef) {
     mode = ref.mode;
-    options.onPuzzleChange?.(category, ref);
-    const matcher = new Matcher(category.items);
-    const loaded = loadGame(category, ref);
+    options.onPuzzleChange?.(ref);
+    const loaded = loadGame(ref);
     const fresh = loaded.fresh;
     let { game, roundStartedAt } = loaded;
+
+    // Alle vragen van deze puzzel alvast laden; ze zijn klein en zo hapert er niets.
+    for (const p of game.puzzle) void options.loadAnswers(p.id).catch(() => {});
 
     scene.setDepth(totalScore(game), false);
     scene.setView('dig', true);
     showHud(game);
 
     function persist() {
-      saveProgress(store, category.id, ref.mode, {
-        version: 2,
+      saveProgress(store, ref.mode, {
+        version: 3,
         puzzleKey: puzzleKey(ref),
-        rounds: toSavedRounds(game),
+        results: game.results,
         roundStartedAt,
       });
     }
 
-    /**
-     * Dagpuzzel: statistieken + streak + geschiedenis. Archief: alleen de geschiedenis.
-     * Onbeperkt: de aparte onbeperkt-statistieken.
-     */
+    /** Daily: stats + streak + geschiedenis. Archive: alleen geschiedenis. Unlimited: eigen stats. */
     function recordStats() {
       const score = totalScore(game);
       if (ref.mode === 'unlimited') {
-        saveStats(
-          store,
-          category.id,
-          recordUnlimitedCompletion(loadStats(store, category.id), score),
-        );
+        saveStats(store, recordUnlimitedCompletion(loadStats(store), score));
         return;
       }
-      recordHistory(store, category.id, ref.dateKey, score);
-      if (ref.mode === 'daily') {
-        saveStats(
-          store,
-          category.id,
-          recordCompletion(loadStats(store, category.id), ref.dateKey, score),
-        );
-      }
+      recordHistory(store, ref.dateKey, score);
+      if (ref.mode === 'daily')
+        saveStats(store, recordCompletion(loadStats(store), ref.dateKey, score));
+    }
+
+    function finishRound(
+      result: RoundResult,
+      typed: string | undefined,
+      countsAfter: AnswerCounts,
+    ) {
+      const before = totalScore(game);
+      game = addResult(game, result);
+      roundStartedAt = null;
+      if (isComplete(game)) recordStats();
+      persist();
+      sound.dig();
+      scene.setDepth(totalScore(game), true);
+      scene.burst();
+      window.setTimeout(() => sound.reveal(result.points), DIG_MS);
+      void showReveal({ typed, depthBefore: before, animate: true, counts: countsAfter });
     }
 
     function showRound() {
-      const stat = currentStat(game);
-      if (!stat) {
+      const prompt = currentPrompt(game);
+      if (!prompt) {
         showEnd();
         return;
       }
@@ -259,46 +261,82 @@ export function startApp(options: AppOptions): void {
         roundStartedAt = Date.now();
         persist();
       }
+      const answersPromise = options.loadAnswers(prompt.id);
+      // Tellingen alvast ophalen, zodat indienen niet op de server hoeft te wachten.
+      const countsPromise = counts.get(prompt.id);
+
       const handle = renderRoundScreen({
         roundNumber: game.results.length + 1,
         totalRounds: game.puzzle.length,
-        question: stat.question,
-        matcher,
-        placeholder: category.placeholder,
+        prompt: prompt.prompt,
         startedAt: roundStartedAt,
-        onSubmit: (answerId, seconds) => {
-          const before = totalScore(game);
-          game = submitRound(game, answerId, seconds);
-          roundStartedAt = null;
-          if (isComplete(game)) recordStats();
-          persist();
-          sound.dig();
-          scene.setDepth(totalScore(game), true);
-          scene.burst();
-          window.setTimeout(
-            () => sound.reveal(game.results[game.results.length - 1]!.score.total),
-            DIG_MS,
+        ready: answersPromise.then(() => undefined),
+        onAnswer: async (text) => {
+          const answers = await answersPromise;
+          const match = matcherFor(answers).match(text);
+          if (!match) return 'unknown';
+          const answer = answers.answers[match.index]!;
+          const before = await countsPromise;
+          const rarity = rarityOf(answers.answers, match.index, before);
+          void counts.record(prompt.id, answer.id);
+          finishRound(
+            {
+              promptId: prompt.id,
+              answerId: answer.id,
+              answer: answer.name,
+              points: rarity.points,
+              rarerThan: rarity.rarerThan,
+            },
+            text,
+            { ...before, [answer.id]: (before[answer.id] ?? 0) + 1 },
           );
-          showReveal(before, true);
+          return 'accepted';
+        },
+        onTimeout: () => {
+          void countsPromise.then((c) => finishRound(timedOutResult(prompt.id), undefined, c));
         },
       });
       mount(handle.el);
       activeRound = handle;
     }
 
-    function showReveal(depthBefore?: number, animate = false) {
-      resume = () => showReveal();
-      const result = game.results[game.results.length - 1]!;
+    async function showReveal(
+      info: {
+        typed?: string;
+        depthBefore?: number;
+        animate?: boolean;
+        counts?: AnswerCounts;
+      } = {},
+    ) {
+      resume = () => void showReveal();
+      const index = game.results.length - 1;
+      const result = game.results[index]!;
+      const prompt = game.puzzle[index]!;
       const after = totalScore(game);
       showHud(game);
+      const next = game.puzzle[index + 1];
+      if (next) void options.loadAnswers(next.id).catch(() => {});
+
+      let answers: PromptAnswers | null = null;
+      try {
+        answers = await options.loadAnswers(prompt.id);
+      } catch {
+        answers = null;
+      }
+      const c = info.counts ?? (await counts.get(prompt.id));
+      const rand = mulberry32(hashString(`${prompt.id}:${puzzleKey(ref)}`));
       mount(
         renderRevealScreen({
+          prompt: prompt.prompt,
           result,
-          items: category.items,
-          noun: category.noun,
-          depthBefore: depthBefore ?? after - result.score.total,
+          typed: info.typed,
+          common: answers ? mostCommon(answers.answers, c, 5) : [],
+          deepCuts: answers ? deepCuts(answers.answers, rand, 3, result.answerId ?? undefined) : [],
+          depthBefore: info.depthBefore ?? after - result.points,
           depthAfter: after,
-          animate,
+          liveCounts: counts.live,
+          answersSoFar: Object.values(c).reduce((s, n) => s + n, 0),
+          animate: info.animate ?? false,
           isLastRound: isComplete(game),
           onNext: () => (isComplete(game) ? showEnd() : showRound()),
         }),
@@ -311,34 +349,23 @@ export function startApp(options: AppOptions): void {
       mount(
         renderEndScreen({
           game,
-          stats: loadStats(store, category.id),
-          onOtherCategory: () => {
-            if (ref.mode === 'archive') archiveCategory = category;
-            showCategories();
-          },
-          onNextPuzzle:
+          stats: loadStats(store),
+          onHome: () => showStart(),
+          onNextDive:
             ref.mode === 'unlimited'
-              ? () => play(category, { mode: 'unlimited', number: ref.number + 1 })
+              ? () => play({ mode: 'unlimited', number: ref.number + 1 })
               : undefined,
-          shareUrl: ref.mode !== 'daily' ? options.shareUrlFor?.(category, ref) : undefined,
+          shareUrl: options.shareUrlFor?.(ref),
         }),
       );
     }
 
     if (isComplete(game)) showEnd();
-    else if (!fresh && game.results.length > 0 && roundStartedAt === null) showReveal();
+    else if (!fresh && game.results.length > 0 && roundStartedAt === null) void showReveal();
     else showRound();
   }
 
-  const start = () => {
-    const { initialCategory, initialGameNumber, initialArchiveDate } = options;
-    if (initialCategory && initialGameNumber)
-      play(initialCategory, { mode: 'unlimited', number: initialGameNumber });
-    else if (initialCategory && initialArchiveDate)
-      play(initialCategory, { mode: 'archive', dateKey: initialArchiveDate });
-    else if (initialCategory) play(initialCategory, { mode: 'daily', dateKey });
-    else showCategories();
-  };
+  const start = () => (options.initialRef ? play(options.initialRef) : showStart());
 
   // Eerste bezoek: eerst de uitleg. De timer van ronde 1 start pas daarna.
   if (!hasSeenIntro(store)) {
@@ -346,7 +373,7 @@ export function startApp(options: AppOptions): void {
     scene.setView('surface', false);
     mount(
       renderIntroScreen({
-        buttonLabel: 'BEGIN TE GRAVEN ▼',
+        buttonLabel: 'BEGIN DESCENT ▼',
         onContinue: () => {
           markIntroSeen(store);
           start();

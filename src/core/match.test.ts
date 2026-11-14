@@ -1,137 +1,77 @@
 import { describe, expect, it } from 'vitest';
-import { categories, countries } from '../data';
-import { Matcher, allowedTypos, editDistance, normalize } from './match';
+import { AnswerMatcher, allowedTypos, editDistance, normalize, variants } from './match';
+import { DOGS } from './fixtures';
 
-const matcher = new Matcher(countries);
-const first = (q: string) => matcher.search(q)[0]?.item.id;
-const resolved = (q: string) => matcher.resolve(q)?.id ?? null;
+const matcher = new AnswerMatcher(DOGS);
+const name = (text: string) => {
+  const m = matcher.match(text);
+  return m ? DOGS[m.index]!.name : null;
+};
 
 describe('normalize', () => {
   it.each([
-    ['België', 'belgie'],
-    ['São Tomé and Príncipe', 'sao tome and principe'],
-    ["Côte d'Ivoire", 'cote d ivoire'],
-    ['  Zuid-Korea ', 'zuid korea'],
-    ['IJsland', 'ijsland'],
+    ['Crème brûlée', 'creme brulee'],
+    ['  Shiba-Inu! ', 'shiba inu'],
+    ['Weißwurst', 'weisswurst'],
+    ['Smørrebrød', 'smorrebrod'],
   ])('%s → %s', (input, expected) => {
     expect(normalize(input)).toBe(expected);
   });
 });
 
-describe('editDistance', () => {
-  it.each([
-    ['brazilie', 'brazilie', 0],
-    ['brasil', 'brazil', 1],
-    ['nederalnd', 'nederland', 1],
-    ['fnland', 'finland', 1],
-    ['abc', 'xyz', 3],
-  ])('%s vs %s = %s', (a, b, d) => {
-    expect(editDistance(a, b)).toBe(d);
+describe('editDistance en allowedTypos', () => {
+  it('telt tikfouten en omwisselingen', () => {
+    expect(editDistance('beagle', 'beagel')).toBe(1);
+    expect(editDistance('poodle', 'poodle')).toBe(0);
+    expect(editDistance('abc', 'xyz')).toBe(3);
+  });
+
+  it('staat bij korte woorden geen tikfouten toe', () => {
+    expect(allowedTypos(4)).toBe(0);
+    expect(allowedTypos(6)).toBe(1);
+    expect(allowedTypos(12)).toBe(2);
   });
 });
 
-describe('allowedTypos', () => {
-  it('staat geen tikfouten toe bij korte termen', () => {
-    expect(allowedTypos(2)).toBe(0);
-    expect(allowedTypos(5)).toBe(1);
-    expect(allowedTypos(9)).toBe(2);
+describe('variants', () => {
+  it('haalt lidwoorden en meervouden weg', () => {
+    expect(variants('the beagles')).toContain('beagle');
+    expect(variants('wolves')).toContain('wolf');
+    expect(variants('puppies')).toContain('puppy');
+    expect(variants('boxes')).toContain('box');
+    expect(variants('grass')).not.toContain('gras');
   });
 });
 
-describe('Matcher.search op landen', () => {
+describe('AnswerMatcher', () => {
   it.each([
-    ['nederland', 'NLD'],
-    ['Netherlands', 'NLD'],
-    ['holland', 'NLD'],
-    ['VS', 'USA'],
-    ['usa', 'USA'],
-    ['amerika', 'USA'],
-    ['VK', 'GBR'],
-    ['engeland', 'GBR'],
-    ['Brazilie', 'BRA'],
-    ['brasil', 'BRA'],
-    ['zuid korea', 'KOR'],
-    ['korea', 'KOR'],
-    ['noord-korea', 'PRK'],
-    ['Turkey', 'TUR'],
-    ['turkije', 'TUR'],
-    ['ivoorkust', 'CIV'],
-    ['cote divoire', 'CIV'],
-    ['tsjechie', 'CZE'],
-    ['duitsalnd', 'DEU'],
-    ['swaziland', 'SWZ'],
-    ['burma', 'MMR'],
-    ['VAE', 'ARE'],
-    ['emiraten', 'ARE'],
-    ['dr congo', 'COD'],
-    ['hongkong', 'HKG'],
-  ])('"%s" → %s', (query, id) => {
-    expect(first(query)).toBe(id);
+    ['German Shepherd', 'German Shepherd'],
+    ['german shepherd', 'German Shepherd'],
+    ['Alsatian', 'German Shepherd'],
+    ['lab', 'Labrador Retriever'],
+    ['sausage dog', 'Dachshund'],
+    ['Beagles', 'Beagle'],
+    ['the poodles', 'Poodle'],
+    ['Lagoto Romagnolo', 'Lagotto Romagnolo'],
+    ['xoloitzcuintli', 'Xoloitzcuintle'],
+    ['husky', 'Siberian Husky'],
+  ])('"%s" → %s', (text, expected) => {
+    expect(name(text)).toBe(expected);
   });
 
-  it('zet een korte exacte naam vóór een langere met dezelfde prefix', () => {
-    expect(
-      matcher
-        .search('niger')
-        .map((m) => m.item.id)
-        .slice(0, 2),
-    ).toEqual(['NER', 'NGA']);
+  it('vindt een los kernwoord bij het bekendste antwoord ermee', () => {
+    expect(matcher.match('retriever')).toEqual({ index: 1, kind: 'head' });
+    expect(name('hound')).toBe('Afghan Hound');
   });
 
-  it('zet prefix vóór substring', () => {
-    const ids = matcher.search('guinea').map((m) => m.item.id);
-    expect(ids[0]).toBe('GIN');
-    expect(ids).toContain('GNQ');
-    expect(ids).toContain('PNG');
+  it('geeft null bij onbekende of te korte invoer', () => {
+    expect(matcher.match('cat')).toBeNull();
+    expect(matcher.match('poo')).toBeNull();
+    expect(matcher.match('   ')).toBeNull();
+    expect(matcher.match('a dog')).toBeNull();
   });
 
-  it('geeft maximaal één treffer per land', () => {
-    const ids = matcher.search('congo').map((m) => m.item.id);
-    expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toContain('COG');
-    expect(ids).toContain('COD');
-  });
-
-  it('respecteert de limiet en geeft niets bij lege invoer', () => {
-    expect(matcher.search('a', 3)).toHaveLength(3);
-    expect(matcher.search('   ')).toEqual([]);
-  });
-
-  it('vindt niets bij onzin', () => {
-    expect(matcher.search('qzxwv')).toEqual([]);
-  });
-});
-
-describe('Matcher.search op dieren', () => {
-  const dieren = new Matcher(categories.find((c) => c.id === 'dieren')!.items);
-  it.each([
-    ['cheetah', 'jachtluipaard'],
-    ['jachtluipaard', 'jachtluipaard'],
-    ['olifant', 'olifant'],
-    ['walvis', 'blauwe-vinvis'],
-    ['pinguin', 'keizerspinguin'],
-    ['pingiun', 'keizerspinguin'],
-    ['schildpad', 'reuzenschildpad'],
-    ['vleermuis', 'buldogvleermuis'],
-  ])('"%s" → %s', (query, id) => {
-    expect(dieren.search(query)[0]?.item.id).toBe(id);
-  });
-});
-
-describe('Matcher.resolve', () => {
-  it.each([
-    ['Nederland', 'NLD'],
-    ['nederalnd', 'NLD'],
-    ['VS', 'USA'],
-    ['Brazilie', 'BRA'],
-  ])('"%s" → %s', (query, id) => {
-    expect(resolved(query)).toBe(id);
-  });
-
-  it('weigert dubbelzinnige invoer', () => {
-    expect(resolved('congo')).toBe('COG');
-    expect(resolved('guinea')).toBe('GIN');
-    expect(resolved('ni')).toBeNull();
-    expect(resolved('')).toBeNull();
+  it('accepteert geen voorvoegsel: "pu" is geen Pumi', () => {
+    expect(matcher.match('pu')).toBeNull();
   });
 });

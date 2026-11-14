@@ -14,8 +14,8 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "data:fetch": "tsx scripts/fetch-data.ts",
-    "data:validate": "tsx scripts/validate-data.ts"
+    "data:fetch": "tsx scripts/fetch-prompts.ts",
+    "data:validate": "tsx scripts/validate-prompts.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.29.0",

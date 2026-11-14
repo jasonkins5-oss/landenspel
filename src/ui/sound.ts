@@ -1,7 +1,7 @@
 import type { KeyValueStore } from '../core/storage';
 
 /** Kleine 8-bit geluidjes met de Web Audio API. Standaard uit; de keuze wordt onthouden. */
-export const SOUND_KEY = 'landenspel:geluid';
+export const SOUND_KEY = 'coredive:sound';
 
 export interface Sound {
   readonly on: boolean;

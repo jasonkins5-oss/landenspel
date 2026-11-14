@@ -1,12 +1,14 @@
-import type { Item } from '../data/types';
+import type { Answer } from './answers';
 
-/** Kleine letters, geen accenten, geen leestekens, enkele spaties. "Sao Tomé" → "sao tome". */
+/** Kleine letters, geen accenten, geen leestekens, enkele spaties. "Pão de Queijo" → "pao de queijo". */
 export function normalize(input: string): string {
   return input
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
     .toLowerCase()
-    .replace(/ĳ/g, 'ij')
+    .replace(/ß/g, 'ss')
+    .replace(/æ/g, 'ae')
+    .replace(/ø/g, 'o')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
@@ -30,110 +32,93 @@ export function editDistance(a: string, b: string): number {
   return d[m]![n]!;
 }
 
-/** Toegestane tikfouten per zoektermlengte. Korte termen zijn te vaak dubbelzinnig. */
+/** Toegestane tikfouten per lengte. Korte woorden zijn te snel een ander, echt bestaand antwoord. */
 export function allowedTypos(length: number): number {
-  if (length <= 3) return 0;
-  if (length <= 6) return 1;
+  if (length <= 4) return 0;
+  if (length <= 8) return 1;
   return 2;
 }
 
-export type MatchKind = 'exact' | 'prefix' | 'word-prefix' | 'substring' | 'fuzzy';
+/** Varianten van een getypt antwoord: zonder lidwoord, enkelvoud. "The Wolves" → "wolves", "wolve", "wolf". */
+export function variants(key: string): string[] {
+  const base = key.replace(/^(the|a|an) /, '');
+  const out = new Set([key, base]);
+  if (base.endsWith('ies') && base.length > 4) out.add(base.slice(0, -3) + 'y');
+  if (base.endsWith('ves') && base.length > 4) out.add(base.slice(0, -3) + 'f');
+  if (base.endsWith('es') && base.length > 3) out.add(base.slice(0, -2));
+  if (base.endsWith('s') && !base.endsWith('ss') && base.length > 3) out.add(base.slice(0, -1));
+  return [...out];
+}
 
-export interface Match<T extends Item = Item> {
-  item: T;
-  /** Welke naam of alias de treffer gaf. */
-  via: string;
+export type MatchKind = 'exact' | 'variant' | 'typo' | 'head';
+
+export interface AnswerMatch {
+  /** Index in de antwoordlijst (0 = bekendste). */
+  index: number;
   kind: MatchKind;
 }
 
-const KIND_ORDER: Record<MatchKind, number> = {
-  exact: 0,
-  prefix: 1,
-  'word-prefix': 2,
-  substring: 3,
-  fuzzy: 4,
-};
-
-interface Entry<T extends Item> {
-  item: T;
-  via: string;
-  key: string;
-}
-
 /**
- * Index over alle namen en aliassen van een lijst items (landen, dieren, …). Eén keer
- * bouwen; daarna is zoeken goedkoop genoeg voor elke toetsaanslag.
+ * Zoekt een vrij getypt antwoord op in de antwoordlijst van één vraag. Geen suggesties: alleen
+ * bij indienen, en alleen een echte treffer telt. Volgorde: exacte naam of alias, dan enkelvoud
+ * en zonder lidwoord, dan een kleine tikfout, en als laatste een los kernwoord ("eagle" → de
+ * bekendste arend). Bij meerdere kandidaten wint het bekendste antwoord.
  */
-export class Matcher<T extends Item = Item> {
-  private readonly entries: Entry<T>[];
+export class AnswerMatcher {
+  /** Genormaliseerde naam of alias → index van het bekendste antwoord met die sleutel. */
+  private readonly keys = new Map<string, number>();
+  /** Laatste woord van een naam → index van het bekendste antwoord met dat kernwoord. */
+  private readonly heads = new Map<string, number>();
 
-  constructor(items: readonly T[]) {
-    this.entries = items.flatMap((item) =>
-      [item.nameNl, item.nameEn, ...item.aliases].map((via) => ({
-        item,
-        via,
-        key: normalize(via),
-      })),
-    );
+  constructor(answers: readonly Answer[]) {
+    answers.forEach((answer, index) => {
+      for (const name of [answer.name, ...answer.aliases]) {
+        const key = normalize(name);
+        if (key && !this.keys.has(key)) this.keys.set(key, index);
+      }
+      const words = normalize(answer.name).split(' ');
+      const head = words[words.length - 1];
+      if (words.length > 1 && head && head.length >= 3 && !this.heads.has(head))
+        this.heads.set(head, index);
+    });
   }
 
-  /**
-   * Beste treffers, maximaal `limit`, één per item. Volgorde: exact, begin van de naam,
-   * begin van een woord, ergens in de naam, en dan tikfouten. Binnen één soort op naamlengte,
-   * zodat "Niger" vóór "Nigeria" komt.
-   */
-  search(query: string, limit = 6): Match<T>[] {
-    const q = normalize(query);
-    if (!q) return [];
-    const typos = allowedTypos(q.length);
+  match(text: string): AnswerMatch | null {
+    const key = normalize(text);
+    if (!key) return null;
 
-    const best = new Map<string, Match<T>>();
-    const consider = (entry: Entry<T>, kind: MatchKind) => {
-      const current = best.get(entry.item.id);
-      if (
-        !current ||
-        KIND_ORDER[kind] < KIND_ORDER[current.kind] ||
-        (KIND_ORDER[kind] === KIND_ORDER[current.kind] && entry.via.length < current.via.length)
-      ) {
-        best.set(entry.item.id, { item: entry.item, via: entry.via, kind });
-      }
-    };
+    const exact = this.keys.get(key);
+    if (exact !== undefined) return { index: exact, kind: 'exact' };
 
-    for (const entry of this.entries) {
-      const { key } = entry;
-      if (key === q) consider(entry, 'exact');
-      else if (key.startsWith(q)) consider(entry, 'prefix');
-      else if (key.includes(` ${q}`)) consider(entry, 'word-prefix');
-      else if (key.includes(q)) consider(entry, 'substring');
-      else if (
-        typos > 0 &&
-        Math.abs(key.length - q.length) <= typos &&
-        editDistance(key, q) <= typos
-      ) {
-        consider(entry, 'fuzzy');
-      }
+    for (const v of variants(key)) {
+      const hit = this.keys.get(v);
+      if (hit !== undefined) return { index: hit, kind: 'variant' };
     }
 
-    return [...best.values()]
-      .sort(
-        (a, b) =>
-          KIND_ORDER[a.kind] - KIND_ORDER[b.kind] ||
-          a.via.length - b.via.length ||
-          a.item.nameNl.localeCompare(b.item.nameNl, 'nl'),
-      )
-      .slice(0, limit);
-  }
+    const typos = allowedTypos(key.length);
+    if (typos > 0) {
+      let best: { index: number; distance: number } | null = null;
+      for (const [candidate, index] of this.keys) {
+        if (Math.abs(candidate.length - key.length) > typos) continue;
+        const distance = editDistance(candidate, key);
+        if (distance > typos) continue;
+        if (
+          !best ||
+          distance < best.distance ||
+          (distance === best.distance && index < best.index)
+        ) {
+          best = { index, distance };
+        }
+      }
+      if (best) return { index: best.index, kind: 'typo' };
+    }
 
-  /**
-   * Het item dat bij Enter wordt ingediend als de speler niets uit de lijst koos.
-   * Alleen een ondubbelzinnige treffer telt: precies één exacte, of anders de enige
-   * treffer die er is. Bij twijfel null, zodat we nooit stil een verkeerd antwoord kiezen.
-   */
-  resolve(query: string): T | null {
-    const matches = this.search(query, 2);
-    const exact = matches.filter((m) => m.kind === 'exact');
-    if (exact.length === 1) return exact[0]!.item;
-    if (exact.length === 0 && matches.length === 1) return matches[0]!.item;
+    if (!key.includes(' ')) {
+      for (const v of variants(key)) {
+        const head = this.heads.get(v);
+        if (head !== undefined) return { index: head, kind: 'head' };
+      }
+    }
     return null;
   }
 }

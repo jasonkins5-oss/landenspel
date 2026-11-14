@@ -2,36 +2,23 @@
  * Opslag in localStorage. Alle toegang zit in try/catch: zonder opslag (privémodus,
  * geblokkeerde site-data) werkt het spel gewoon, alleen zonder geheugen.
  *
- * Voortgang en statistieken worden per categorie bewaard, onder een sleutel met de
- * categorie-id erin. Versie 2: sinds de categorieën; oudere opslag wordt genegeerd.
+ * Versie 3 (CORE DIVE): andere sleutels dan versie 1 en 2, dus oude opslag wordt genegeerd.
  */
 
-import type { CategoryId } from '../data/types';
-import type { GameMode, PuzzleRef } from './game';
+import type { GameMode, PuzzleRef, RoundResult } from './game';
 
-export const STORAGE_VERSION = 2;
-const PROGRESS_PREFIX: Record<GameMode, string> = {
-  daily: 'landenspel:progress',
-  unlimited: 'landenspel:onbeperkt',
-  archive: 'landenspel:archief',
-};
-export const progressKey = (category: CategoryId, mode: GameMode = 'daily') =>
-  `${PROGRESS_PREFIX[mode]}:${category}`;
-export const statsKey = (category: CategoryId) => `landenspel:stats:${category}`;
-export const historyKey = (category: CategoryId) => `landenspel:geschiedenis:${category}`;
+export const STORAGE_VERSION = 3;
+export const progressKey = (mode: GameMode) => `coredive:progress:${mode}`;
+export const STATS_KEY = 'coredive:stats';
+export const HISTORY_KEY = 'coredive:history';
+export const INTRO_KEY = 'coredive:intro-seen';
 
-export interface SavedRound {
-  statId: string;
-  answerId: string | null;
-  seconds: number;
-}
-
-/** Voortgang van één puzzel in één categorie en modus. Een nieuwere puzzel overschrijft de vorige. */
+/** Voortgang van één puzzel per modus. Een nieuwere puzzel in dezelfde modus overschrijft de vorige. */
 export interface SavedProgress {
   version: number;
-  /** "2026-11-13" (dag- of archiefpuzzel) of "42" (onbeperkte puzzel #42). */
+  /** "2026-11-13" (dag- of archiefpuzzel) of "42" (dive #42). */
   puzzleKey: string;
-  rounds: SavedRound[];
+  results: RoundResult[];
   /** Epoch-ms waarop de lopende ronde begon, zodat herladen de timer niet terugzet. */
   roundStartedAt: number | null;
 }
@@ -43,7 +30,7 @@ export interface PlayerStats {
   best: number;
   currentStreak: number;
   longestStreak: number;
-  /** Datum van de laatst voltooide puzzel, als "YYYY-MM-DD". */
+  /** Datum van de laatst voltooide dagpuzzel, als "YYYY-MM-DD". */
   lastCompleted: string | null;
   /** Onbeperkte modus: telt niet mee voor de streak. */
   unlimitedPlayed: number;
@@ -90,16 +77,12 @@ function writeJson(store: KeyValueStore, key: string, value: unknown): void {
 
 /**
  * Geeft de opgeslagen voortgang van deze puzzel, of null als er niets (bruikbaars) staat.
- * Met `ref.mode === 'unlimited'` en `number: 0` geeft het de laatst gespeelde onbeperkte
- * puzzel terug, ongeacht het nummer; zo kan de app daar verdergaan.
+ * Met `ref.mode === 'unlimited'` en `number: 0` geeft het de laatst gespeelde dive terug,
+ * ongeacht het nummer; zo kan de app daar verdergaan.
  */
-export function loadProgress(
-  store: KeyValueStore,
-  category: CategoryId,
-  ref: PuzzleRef,
-): SavedProgress | null {
-  const saved = readJson<SavedProgress>(store, progressKey(category, ref.mode));
-  if (!saved || saved.version !== STORAGE_VERSION || !Array.isArray(saved.rounds)) return null;
+export function loadProgress(store: KeyValueStore, ref: PuzzleRef): SavedProgress | null {
+  const saved = readJson<SavedProgress>(store, progressKey(ref.mode));
+  if (!saved || saved.version !== STORAGE_VERSION || !Array.isArray(saved.results)) return null;
   const wanted =
     ref.mode !== 'unlimited'
       ? ref.dateKey
@@ -109,47 +92,18 @@ export function loadProgress(
   return saved.puzzleKey === wanted ? saved : null;
 }
 
-/** Eindscores van voltooide dagpuzzels (vandaag of uit het archief), per datum. */
-export type PuzzleHistory = Record<string, number>;
-
-export function loadHistory(store: KeyValueStore, category: CategoryId): PuzzleHistory {
-  const saved = readJson<{ version: number; scores: PuzzleHistory }>(store, historyKey(category));
-  if (!saved || saved.version !== STORAGE_VERSION || typeof saved.scores !== 'object') return {};
-  return saved.scores ?? {};
+export function saveProgress(store: KeyValueStore, mode: GameMode, progress: SavedProgress): void {
+  writeJson(store, progressKey(mode), progress);
 }
 
-/** Bewaart de eerste eindscore van een datum; een tweede keer spelen overschrijft niets. */
-export function recordHistory(
-  store: KeyValueStore,
-  category: CategoryId,
-  dateKey: string,
-  score: number,
-): void {
-  const scores = loadHistory(store, category);
-  if (dateKey in scores) return;
-  writeJson(store, historyKey(category), {
-    version: STORAGE_VERSION,
-    scores: { ...scores, [dateKey]: score },
-  });
-}
-
-export function saveProgress(
-  store: KeyValueStore,
-  category: CategoryId,
-  mode: GameMode,
-  progress: SavedProgress,
-): void {
-  writeJson(store, progressKey(category, mode), progress);
-}
-
-export function loadStats(store: KeyValueStore, category: CategoryId): PlayerStats {
-  const saved = readJson<PlayerStats>(store, statsKey(category));
+export function loadStats(store: KeyValueStore): PlayerStats {
+  const saved = readJson<PlayerStats>(store, STATS_KEY);
   if (!saved || saved.version !== STORAGE_VERSION) return EMPTY_STATS;
   return { ...EMPTY_STATS, ...saved };
 }
 
-export function saveStats(store: KeyValueStore, category: CategoryId, stats: PlayerStats): void {
-  writeJson(store, statsKey(category), stats);
+export function saveStats(store: KeyValueStore, stats: PlayerStats): void {
+  writeJson(store, STATS_KEY, stats);
 }
 
 function dayDifference(fromKey: string, toKey: string): number {
@@ -158,7 +112,7 @@ function dayDifference(fromKey: string, toKey: string): number {
 }
 
 /**
- * Werkt de statistieken bij na een voltooide puzzel. De streak loopt door als de vorige
+ * Werkt de statistieken bij na een voltooide dagpuzzel. De streak loopt door als de vorige
  * voltooide puzzel precies gisteren was; dezelfde dag nog eens telt niet dubbel.
  */
 export function recordCompletion(stats: PlayerStats, dateKey: string, score: number): PlayerStats {
@@ -178,7 +132,7 @@ export function recordCompletion(stats: PlayerStats, dateKey: string, score: num
   };
 }
 
-/** Telt een voltooide onbeperkte puzzel op; de streak blijft onaangeroerd. */
+/** Telt een voltooide dive op; de streak blijft onaangeroerd. */
 export function recordUnlimitedCompletion(stats: PlayerStats, score: number): PlayerStats {
   return {
     ...stats,
@@ -196,7 +150,24 @@ export function effectiveStreak(stats: PlayerStats, todayKey: string): number {
   return gap <= 1 ? stats.currentStreak : 0;
 }
 
-export const INTRO_KEY = 'landenspel:intro-gezien';
+/** Eindscores van voltooide dagpuzzels (vandaag of uit het archief), per datum. */
+export type PuzzleHistory = Record<string, number>;
+
+export function loadHistory(store: KeyValueStore): PuzzleHistory {
+  const saved = readJson<{ version: number; scores: PuzzleHistory }>(store, HISTORY_KEY);
+  if (!saved || saved.version !== STORAGE_VERSION || typeof saved.scores !== 'object') return {};
+  return saved.scores ?? {};
+}
+
+/** Bewaart de eerste eindscore van een datum; een tweede keer spelen overschrijft niets. */
+export function recordHistory(store: KeyValueStore, dateKey: string, score: number): void {
+  const scores = loadHistory(store);
+  if (dateKey in scores) return;
+  writeJson(store, HISTORY_KEY, {
+    version: STORAGE_VERSION,
+    scores: { ...scores, [dateKey]: score },
+  });
+}
 
 export function hasSeenIntro(store: KeyValueStore): boolean {
   try {
@@ -218,7 +189,7 @@ export function markIntroSeen(store: KeyValueStore): void {
 export function browserStore(): KeyValueStore {
   try {
     const ls = window.localStorage;
-    const probe = '__landenspel_probe__';
+    const probe = '__coredive_probe__';
     ls.setItem(probe, '1');
     ls.removeItem(probe);
     return ls;

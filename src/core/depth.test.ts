@@ -41,10 +41,10 @@ describe('formatDepth', () => {
   it.each([
     [0, '0 m'],
     [0.105, '105 m'],
-    [12.34, '12,3 km'],
+    [12.34, '12.3 km'],
     [35, '35 km'],
-    [2890, '2.890 km'],
-    [6371, '6.371 km'],
+    [2890, '2,890 km'],
+    [6371, '6,371 km'],
   ])('%s km → %s', (km, text) => {
     expect(formatDepth(km)).toBe(text);
   });
@@ -58,11 +58,11 @@ describe('LAYERS en layerAt', () => {
   });
 
   it('vindt de laag bij een diepte', () => {
-    expect(layerAt(0).id).toBe('bodem');
-    expect(layerAt(499).id).toBe('bodem');
-    expect(layerAt(500).id).toBe('korst');
-    expect(layerAt(4410).id).toBe('ondermantel');
-    expect(layerAt(MAX_DEPTH_UNITS).id).toBe('binnenkern');
+    expect(layerAt(0).id).toBe('soil');
+    expect(layerAt(499).id).toBe('soil');
+    expect(layerAt(500).id).toBe('crust');
+    expect(layerAt(4410).id).toBe('lower-mantle');
+    expect(layerAt(MAX_DEPTH_UNITS).id).toBe('inner-core');
   });
 });
 
@@ -82,16 +82,16 @@ describe('DEPTH_FACTS', () => {
 
 describe('tierFor', () => {
   it.each([
-    [1000, 'kern'],
-    [950, 'kern'],
-    [949, 'magma'],
-    [800, 'magma'],
-    [600, 'rotsblok'],
-    [599, 'kiezel'],
-    [300, 'kiezel'],
-    [299, 'zandkorrel'],
-    [1, 'zandkorrel'],
-    [0, 'mis'],
+    [1000, 'core'],
+    [900, 'core'],
+    [899, 'magma'],
+    [700, 'magma'],
+    [500, 'bedrock'],
+    [499, 'clay'],
+    [300, 'clay'],
+    [299, 'topsoil'],
+    [100, 'topsoil'],
+    [0, 'missed'],
   ])('%s punten → %s', (score, id) => {
     expect(tierFor(score).id).toBe(id);
   });

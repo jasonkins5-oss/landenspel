@@ -1,18 +1,11 @@
-import type { Category, Stat } from '../data/types';
+import type { PromptMeta } from './answers';
+import { tierFor } from './depth';
 import { getPuzzle, ROUNDS_PER_PUZZLE } from './puzzle';
-import { type RoundScore, scoreRound } from './scoring';
-
-export interface RoundResult {
-  stat: Stat;
-  /** Item-id van het antwoord; null = geen keuze ingediend (tijd verlopen). */
-  answerId: string | null;
-  seconds: number;
-  score: RoundScore;
-}
+import { MAX_POINTS } from './rarity';
 
 /**
- * Welke puzzel: de dagpuzzel van vandaag, een genummerde puzzel uit de onbeperkte modus, of
- * een oude dagpuzzel uit het archief (dezelfde vragen als op die dag, maar zonder streak).
+ * Welke puzzel: de dagpuzzel van vandaag, een genummerde dive uit de onbeperkte modus, of een
+ * oude dagpuzzel uit het archief (dezelfde vragen als op die dag, maar zonder streak).
  */
 export type PuzzleRef =
   | { mode: 'daily'; dateKey: string }
@@ -21,21 +14,30 @@ export type PuzzleRef =
 
 export type GameMode = PuzzleRef['mode'];
 
+/**
+ * Resultaat van één ronde. De punten worden bij het indienen vastgelegd: ze hangen af van de
+ * spelerstellingen op dat moment, en die veranderen later.
+ */
+export interface RoundResult {
+  promptId: string;
+  /** Wikidata-id van het antwoord; null = tijd op. */
+  answerId: string | null;
+  /** Naam van het antwoord zoals in onze lijst. */
+  answer: string | null;
+  points: number;
+  /** 0–1: aandeel antwoorden dat vaker gegeven wordt. */
+  rarerThan: number;
+}
+
 export interface GameState {
-  category: Category;
   ref: PuzzleRef;
-  puzzle: Stat[];
-  /** Resultaten van de voltooide rondes, in volgorde. */
+  puzzle: PromptMeta[];
   results: RoundResult[];
 }
 
-/**
- * Seed van een puzzel. De dagpuzzel van Landen houdt de seed van versie 1; een archiefpuzzel
- * heeft dezelfde seed als de dagpuzzel van die datum.
- */
-export function puzzleSeed(category: Pick<Category, 'id'>, ref: PuzzleRef): string {
-  if (ref.mode === 'unlimited') return `${category.id}:onbeperkt:${ref.number}`;
-  return category.id === 'landen' ? ref.dateKey : `${category.id}:${ref.dateKey}`;
+/** Seed van een puzzel. Een archiefpuzzel heeft dezelfde seed als de dagpuzzel van die datum. */
+export function puzzleSeed(ref: PuzzleRef): string {
+  return ref.mode === 'unlimited' ? `dive:${ref.number}` : `day:${ref.dateKey}`;
 }
 
 /** Sleutel waaronder de voortgang van deze puzzel wordt herkend ("2026-11-13" of "42"). */
@@ -43,42 +45,25 @@ export function puzzleKey(ref: PuzzleRef): string {
   return ref.mode === 'unlimited' ? String(ref.number) : ref.dateKey;
 }
 
-export function createGame(category: Category, ref: PuzzleRef): GameState {
-  return {
-    category,
-    ref,
-    puzzle: getPuzzle(puzzleSeed(category, ref), category.stats),
-    results: [],
-  };
-}
-
-export interface SavedRoundInput {
-  statId: string;
-  answerId: string | null;
-  seconds: number;
+export function createGame(ref: PuzzleRef, prompts: readonly PromptMeta[]): GameState {
+  return { ref, puzzle: getPuzzle(puzzleSeed(ref), prompts), results: [] };
 }
 
 /**
- * Bouwt een spel opnieuw op uit opgeslagen rondes. De score wordt opnieuw berekend
- * (die is deterministisch). Stopt zodra een opgeslagen ronde niet bij de puzzel past,
- * bijvoorbeeld na een datawijziging; de rest wordt dan genegeerd.
+ * Bouwt een spel opnieuw op uit opgeslagen rondes. Stopt bij de eerste ronde die niet bij de
+ * puzzel past (bijvoorbeeld na een wijziging in de vragenlijst); de rest wordt genegeerd.
  */
 export function restoreGame(
-  category: Category,
   ref: PuzzleRef,
-  saved: readonly SavedRoundInput[],
+  prompts: readonly PromptMeta[],
+  saved: readonly RoundResult[],
 ): GameState {
-  let game = createGame(category, ref);
+  let game = createGame(ref, prompts);
   for (const round of saved) {
-    const stat = currentStat(game);
-    if (!stat || stat.id !== round.statId) break;
-    game = submitRound(game, round.answerId, round.seconds);
+    if (currentPrompt(game)?.id !== round.promptId) break;
+    game = addResult(game, round);
   }
   return game;
-}
-
-export function toSavedRounds(game: GameState): SavedRoundInput[] {
-  return game.results.map((r) => ({ statId: r.stat.id, answerId: r.answerId, seconds: r.seconds }));
 }
 
 export function currentRoundIndex(game: GameState): number {
@@ -89,33 +74,30 @@ export function isComplete(game: GameState): boolean {
   return game.results.length >= ROUNDS_PER_PUZZLE;
 }
 
-export function currentStat(game: GameState): Stat | undefined {
+export function currentPrompt(game: GameState): PromptMeta | undefined {
   return game.puzzle[currentRoundIndex(game)];
 }
 
-/** Scoort de huidige ronde en voegt het resultaat toe. Mag niet worden aangeroepen als de puzzel al klaar is. */
-export function submitRound(game: GameState, answerId: string | null, seconds: number): GameState {
-  const stat = currentStat(game);
-  if (!stat) throw new Error('Puzzel is al afgerond');
-  const score = scoreRound(stat, answerId, seconds);
-  const result: RoundResult = { stat, answerId, seconds, score };
-  return { ...game, results: [...game.results, result] };
+/** Voegt het resultaat van de huidige ronde toe. Mag niet na het einde van de puzzel. */
+export function addResult(game: GameState, result: RoundResult): GameState {
+  const prompt = currentPrompt(game);
+  if (!prompt) throw new Error('Puzzle is already complete');
+  if (prompt.id !== result.promptId) throw new Error(`Expected prompt ${prompt.id}`);
+  const points = Math.max(0, Math.min(MAX_POINTS, Math.round(result.points)));
+  return { ...game, results: [...game.results, { ...result, points }] };
+}
+
+/** Tijd op: 0 punten. */
+export function timedOutResult(promptId: string): RoundResult {
+  return { promptId, answerId: null, answer: null, points: 0, rarerThan: 0 };
 }
 
 export function totalScore(game: GameState): number {
-  return game.results.reduce((sum, r) => sum + r.score.total, 0);
+  return game.results.reduce((sum, r) => sum + r.points, 0);
 }
 
-export const MAX_TOTAL_SCORE = ROUNDS_PER_PUZZLE * 1000;
-
-/** Emoji-raster voor de deeltekst: 🟩 ≥ 800, 🟨 ≥ 400, 🟧 > 0, ⬛ 0. */
-export function scoreEmoji(total: number): string {
-  if (total >= 800) return '🟩';
-  if (total >= 400) return '🟨';
-  if (total > 0) return '🟧';
-  return '⬛';
-}
+export const MAX_TOTAL_SCORE = ROUNDS_PER_PUZZLE * MAX_POINTS;
 
 export function emojiGrid(game: GameState): string {
-  return game.results.map((r) => scoreEmoji(r.score.total)).join('');
+  return game.results.map((r) => tierFor(r.points).emoji).join('');
 }

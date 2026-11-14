@@ -1,145 +1,93 @@
 import { describe, expect, it } from 'vitest';
-import { categories } from '../data';
+import { PROMPTS } from './fixtures';
 import { ROUNDS_PER_PUZZLE } from './puzzle';
 import {
-  restoreGame,
-  toSavedRounds,
+  MAX_TOTAL_SCORE,
+  addResult,
   createGame,
+  currentPrompt,
   currentRoundIndex,
-  currentStat,
   emojiGrid,
   isComplete,
-  MAX_TOTAL_SCORE,
   puzzleKey,
   puzzleSeed,
-  scoreEmoji,
-  submitRound,
+  restoreGame,
+  timedOutResult,
   totalScore,
+  type GameState,
   type PuzzleRef,
 } from './game';
 
-const landen = categories.find((c) => c.id === 'landen')!;
-const dieren = categories.find((c) => c.id === 'dieren')!;
 const day: PuzzleRef = { mode: 'daily', dateKey: '2026-11-13' };
-const ids = (ref: PuzzleRef, category = dieren) =>
-  createGame(category, ref).puzzle.map((s) => s.id);
-
-describe('createGame', () => {
-  it('begint zonder resultaten, met 7 statistieken', () => {
-    const game = createGame(landen, day);
-    expect(game.results).toEqual([]);
-    expect(game.puzzle).toHaveLength(ROUNDS_PER_PUZZLE);
-    expect(isComplete(game)).toBe(false);
-    expect(currentRoundIndex(game)).toBe(0);
+const answer = (game: GameState, points: number) =>
+  addResult(game, {
+    promptId: currentPrompt(game)!.id,
+    answerId: 'Q1',
+    answer: 'Something',
+    points,
+    rarerThan: 0.5,
   });
 
-  it('geeft elke categorie een eigen dagpuzzel; Landen houdt de seed van versie 1', () => {
-    expect(puzzleSeed(landen, day)).toBe('2026-11-13');
-    expect(puzzleSeed(dieren, day)).toBe('dieren:2026-11-13');
-    expect(ids(day)).toEqual(ids(day));
-    expect(ids({ mode: 'daily', dateKey: '2026-11-14' })).not.toEqual(ids(day));
-  });
-
-  it('een archiefpuzzel heeft dezelfde vragen als de dagpuzzel van die datum', () => {
+describe('puzzleSeed en puzzleKey', () => {
+  it('geeft archief en dagpuzzel van dezelfde datum dezelfde vragen', () => {
     const archive: PuzzleRef = { mode: 'archive', dateKey: '2026-11-13' };
-    expect(puzzleSeed(landen, archive)).toBe(puzzleSeed(landen, day));
+    expect(puzzleSeed(archive)).toBe(puzzleSeed(day));
+    expect(createGame(archive, PROMPTS).puzzle).toEqual(createGame(day, PROMPTS).puzzle);
     expect(puzzleKey(archive)).toBe('2026-11-13');
-    expect(ids(archive)).toEqual(ids(day));
   });
 
-  it('onbeperkte puzzels zijn deterministisch per nummer en verschillen van de dagpuzzel', () => {
-    const u42: PuzzleRef = { mode: 'unlimited', number: 42 };
-    expect(puzzleSeed(dieren, u42)).toBe('dieren:onbeperkt:42');
-    expect(puzzleKey(u42)).toBe('42');
-    expect(puzzleKey(day)).toBe('2026-11-13');
-    expect(ids(u42)).toEqual(ids(u42));
-    expect(ids(u42)).not.toEqual(ids({ mode: 'unlimited', number: 43 }));
-    expect(ids(u42, landen)).not.toEqual(ids(day, landen));
+  it('nummert dives apart', () => {
+    const dive: PuzzleRef = { mode: 'unlimited', number: 42 };
+    expect(puzzleSeed(dive)).toBe('dive:42');
+    expect(puzzleKey(dive)).toBe('42');
   });
 });
 
-describe('submitRound', () => {
-  it('voegt een resultaat toe en gaat naar de volgende ronde', () => {
-    let game = createGame(landen, day);
-    const stat = currentStat(game)!;
-    const best = Object.entries(stat.values).sort(([, a], [, b]) => b - a)[0]![0];
-    game = submitRound(game, best, 3);
-    expect(game.results).toHaveLength(1);
-    expect(game.results[0]!.score.total).toBe(1000);
-    expect(currentRoundIndex(game)).toBe(1);
-    expect(currentStat(game)).toBe(game.puzzle[1]);
-  });
-
-  it('werkt ook zonder keuze (tijd verlopen)', () => {
-    const game = submitRound(createGame(landen, day), null, 60);
-    expect(game.results[0]!.score.total).toBe(0);
-    expect(game.results[0]!.score.timedOut).toBe(true);
-  });
-
-  it('is onveranderlijk: laat de vorige state intact', () => {
-    const game = createGame(landen, day);
-    const next = submitRound(game, null, 60);
-    expect(game.results).toEqual([]);
-    expect(next.results).toHaveLength(1);
-  });
-
-  it('weigert een ronde na het einde van de puzzel', () => {
-    let game = createGame(landen, day);
-    for (let i = 0; i < ROUNDS_PER_PUZZLE; i++) {
-      game = submitRound(game, null, 60);
-    }
+describe('spelverloop', () => {
+  it('begint leeg en loopt door de 7 vragen', () => {
+    let game = createGame(day, PROMPTS);
+    expect(currentRoundIndex(game)).toBe(0);
+    for (let i = 0; i < ROUNDS_PER_PUZZLE; i++) game = answer(game, 1000);
     expect(isComplete(game)).toBe(true);
-    expect(() => submitRound(game, null, 60)).toThrow();
-  });
-});
-
-describe('totalScore', () => {
-  it('telt op tot maximaal 7000', () => {
-    let game = createGame(dieren, { mode: 'unlimited', number: 7 });
-    for (const stat of game.puzzle) {
-      const best = Object.entries(stat.values).sort(([, a], [, b]) => b - a)[0]![0];
-      game = submitRound(game, best, 0);
-    }
     expect(totalScore(game)).toBe(MAX_TOTAL_SCORE);
+    expect(currentPrompt(game)).toBeUndefined();
+    expect(() => answer(game, 100)).toThrow();
+  });
+
+  it('is onveranderlijk en klemt punten tussen 0 en 1000', () => {
+    const game = createGame(day, PROMPTS);
+    const next = answer(game, 5000);
+    expect(game.results).toEqual([]);
+    expect(next.results[0]!.points).toBe(1000);
+    expect(answer(game, -5).results[0]!.points).toBe(0);
+  });
+
+  it('weigert een resultaat voor de verkeerde vraag', () => {
+    const game = createGame(day, PROMPTS);
+    expect(() => addResult(game, timedOutResult('bestaat-niet'))).toThrow();
+  });
+
+  it('bouwt het emojiraster per tier', () => {
+    let game = createGame(day, PROMPTS);
+    game = addResult(game, timedOutResult(currentPrompt(game)!.id));
+    game = answer(game, 150);
+    game = answer(game, 950);
+    expect(emojiGrid(game)).toBe('⬛🟫🟨');
   });
 });
 
-describe('scoreEmoji en emojiGrid', () => {
-  it.each([
-    [1000, '🟩'],
-    [800, '🟩'],
-    [799, '🟨'],
-    [400, '🟨'],
-    [399, '🟧'],
-    [1, '🟧'],
-    [0, '⬛'],
-  ])('%s → %s', (score, emoji) => {
-    expect(scoreEmoji(score)).toBe(emoji);
-  });
-
-  it('bouwt een raster van 7 tekens na een volledige puzzel', () => {
-    let game = createGame(landen, day);
-    for (let i = 0; i < ROUNDS_PER_PUZZLE; i++) {
-      game = submitRound(game, null, 60);
-    }
-    expect(emojiGrid(game)).toBe('⬛⬛⬛⬛⬛⬛⬛');
-  });
-});
-
-describe('restoreGame en toSavedRounds', () => {
-  it('herstelt een half gespeelde puzzel met dezelfde scores', () => {
-    let game = createGame(landen, day);
-    game = submitRound(game, 'NLD', 7);
-    game = submitRound(game, null, 60);
-    const restored = restoreGame(landen, day, toSavedRounds(game));
-    expect(restored.results.map((r) => r.score)).toEqual(game.results.map((r) => r.score));
+describe('restoreGame', () => {
+  it('herstelt opgeslagen rondes met hun vastgelegde punten', () => {
+    let game = createGame(day, PROMPTS);
+    game = answer(game, 420);
+    game = addResult(game, timedOutResult(currentPrompt(game)!.id));
+    const restored = restoreGame(day, PROMPTS, game.results);
+    expect(restored.results).toEqual(game.results);
     expect(currentRoundIndex(restored)).toBe(2);
   });
 
-  it('negeert opgeslagen rondes die niet bij de puzzel passen', () => {
-    const restored = restoreGame(landen, day, [
-      { statId: 'bestaat-niet', answerId: 'NLD', seconds: 1 },
-    ]);
+  it('stopt bij een ronde die niet bij de puzzel past', () => {
+    const restored = restoreGame(day, PROMPTS, [timedOutResult('bestaat-niet')]);
     expect(restored.results).toEqual([]);
   });
 });

@@ -1,16 +1,10 @@
-import {
-  GRACE_SECONDS,
-  MAX_PENALTY,
-  PENALTY_PER_SECOND,
-  TIME_LIMIT_SECONDS,
-} from '../core/scoring';
 import { ROUNDS_PER_PUZZLE } from '../core/puzzle';
 import { MAX_TOTAL_SCORE } from '../core/game';
 import { EARTH_RADIUS_KM, TIERS, formatDepth } from '../core/depth';
+import { TIME_LIMIT_SECONDS } from './round-screen';
 import { escapeHtml } from './html';
 
 export interface IntroScreenOptions {
-  /** Tekst op de knop: "Begin te graven" bij een nieuwe puzzel, "Terug" vanuit de help. */
   buttonLabel: string;
   onContinue: () => void;
 }
@@ -21,20 +15,20 @@ export function renderIntroScreen(options: IntroScreenOptions): HTMLElement {
   el.className = 'intro-screen';
   el.innerHTML = `
     <section class="panel intro-panel">
-      <h2 class="section-label">HOE WERKT HET?</h2>
+      <h2 class="section-label">HOW TO PLAY</h2>
       <ol class="intro-steps">
-        <li>Kies een categorie. Je krijgt ${ROUNDS_PER_PUZZLE} vragen, zoals <em>"Welk land heeft de meeste inwoners?"</em> of <em>"Welk dier is het snelst?"</em></li>
-        <li>Typ één antwoord en druk op <strong>GRAAF</strong>. Hoe dichter jouw antwoord bij de nummer 1 zit, hoe meer punten (maximaal 1000).</li>
-        <li>Elk punt graaft je dieper de aarde in. Een perfecte puzzel (${MAX_TOTAL_SCORE}) eindigt in het middelpunt, op ${escapeHtml(formatDepth(EARTH_RADIUS_KM))}.</li>
-        <li>Na ${GRACE_SECONDS} seconden kost elke seconde ${PENALTY_PER_SECOND} punten, tot ${MAX_PENALTY}. Na ${TIME_LIMIT_SECONDS} seconden is de ronde voorbij.</li>
+        <li>Each dive has ${ROUNDS_PER_PUZZLE} prompts, like <em>“Name a dog breed”</em> or <em>“Name a cheese”</em>.</li>
+        <li>Type <strong>one answer</strong> and hit <strong>DIG</strong>. The rarer your answer, the more points (up to 1,000). Labrador is easy. Pumi is deep.</li>
+        <li>Every point digs you deeper. A perfect dive (${MAX_TOTAL_SCORE.toLocaleString('en-GB')}) reaches the centre of the Earth, ${escapeHtml(formatDepth(EARTH_RADIUS_KM))} down.</li>
+        <li>You have ${TIME_LIMIT_SECONDS} seconds per prompt. If we don’t know your answer, you can simply try another.</li>
       </ol>
-      <ul class="tier-legend" aria-label="Wat je per vraag kunt halen">
+      <ul class="tier-legend" aria-label="What you can score per prompt">
         ${TIERS.map(
           (t) =>
             `<li style="--tier-color: ${t.color}"><span class="tier-legend__name">${escapeHtml(t.name)}</span><span class="tier-legend__min">${t.min === 0 ? '0' : `${t.min}+`}</span></li>`,
         ).join('')}
       </ul>
-      <p class="intro-note">Elke dag een nieuwe puzzel per categorie. In de modus <strong>Onbeperkt</strong> speel je zoveel puzzels als je wilt.</p>
+      <p class="intro-note">Rarity comes from what other divers answer, combined with how well known each answer is. Play the <strong>Daily</strong> dive, endless <strong>Unlimited</strong> dives, or catch up in the <strong>Archive</strong>.</p>
       <button type="button" class="btn btn--primary intro-btn">${escapeHtml(options.buttonLabel)}</button>
     </section>
   `;

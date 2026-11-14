@@ -29,6 +29,11 @@ jobs:
       - run: npm run data:validate
       - run: npm test
       - run: npm run build
+        env:
+          # Publieke Supabase-gegevens (Settings → Secrets and variables → Actions → Variables).
+          # Ontbreken ze, dan werkt het spel met alleen de schatting uit bekendheid.
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

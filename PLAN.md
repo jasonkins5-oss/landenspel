@@ -1,168 +1,94 @@
-# Dagelijks landen-schattingsspel — plan
+# CORE DIVE — plan (versie 3)
 
-## Spelregels (vastgesteld)
+Versie 1 ("Landenspel": landenstatistieken) en versie 2 (categorieën en de pixel-look) staan in de
+git-geschiedenis. Versie 3 laat de statistiekvragen en de categorieën los en wordt een Engels
+spel in de geest van Krillion, met eigen naam, eigen tekeningen en eigen code. Het design van
+versie 2 blijft: de doorsnede van de aarde, de graafmachine, de HUD en de tiers.
 
-- Elke dag één puzzel van 7 rondes, voor iedereen gelijk. De dag wisselt om 00:00 UTC.
-- Elke ronde vraagt: "Welk land heeft de hoogste X?" Elke statistiek komt maar één keer per puzzel voor.
-- De vragen worden gekozen met een seed op basis van de UTC-datum (`YYYY-MM-DD`).
-- Landenset: de VN-leden plus een paar bekende gebieden (Taiwan, Kosovo, Hongkong, Palestina).
-- Alleen statistieken met strikt positieve waarden en één vast peiljaar.
-- De speler heeft één poging per ronde en kiest via autocomplete (Nederlands en Engels, met aliassen en tolerantie voor tikfouten).
-- **Score per ronde** (maximaal 1000):
-  - `afstand = log10(beste / waarde)`
-  - `basis = round(1000 × max(0, 1 − afstand / K))`
-  - K hangt af van de statistiek: `K = log10(beste / mediaan) / (1 − 0,3)`. Een land op de mediaan krijgt zo altijd 300 punten, of de waarden nu dicht bij elkaar liggen (levensverwachting) of over ordes van grootte verspreid zijn (bbp). K wordt bij het spelen uit de data berekend (`src/core/scoring.ts`).
-  - Een waarde van 0 (bijvoorbeeld 0% bos) geeft 0 punten.
-  - `straf = min(300, 10 × max(0, seconden − 5))`
-  - `score = max(0, basis − straf)`
-  - Geen data voor het gekozen land, of de limiet van 60 seconden verlopen: 0 punten.
-- Maximale dagscore: 7000.
-- Na elke ronde ziet de speler de waarde van het gekozen land, de positie in de ranglijst en de top 5.
-- Opslag in `localStorage`: voortgang van vandaag, een streak en statistieken. Je kunt maar één keer per dag spelen.
-- Deelknop met een emoji-raster: 🟩 ≥ 800, 🟨 ≥ 400, 🟧 > 0, ⬛ 0.
-- De interface is in het Nederlands. Het spel is statisch, met Vite + TypeScript en zonder backend.
+## Spelregels
 
-## Fase 0 — Projectopzet
+- Elke ronde is een open vraag: **"Name a dog breed"**, "Name a cheese", "Name a moon of Jupiter".
+- De speler typt **één antwoord** in vrije tekst, zonder suggesties (anders verraden die de
+  niche antwoorden). Matching is tolerant: hoofdletters, accenten, aliassen, meervoud en kleine
+  tikfouten.
+- Een antwoord dat we niet kennen kost **geen beurt**: "We don't know that one, try another". De
+  speler mag opnieuw tot de tijd op is. Zo wordt een geldig maar onbekend antwoord nooit
+  afgestraft als fout.
+- **30 seconden** per vraag, geen tijdstraf. Tijd op = 0 punten.
+- **Hoe zeldzamer het antwoord, hoe meer punten** (100 tot 1000) en hoe dieper je graaft. Een
+  perfecte puzzel (7 × 1000) eindigt in het middelpunt van de aarde.
+- Modi: **Daily** (7 vragen, voor iedereen dezelfde, telt voor de streak), **Unlimited**
+  (genummerde dives #1, #2, …, eindeloos) en **Archive** (oude dagpuzzels).
+- Alles in het Engels: interface, vragen en antwoorden.
 
-- Vite met de vanilla TypeScript-template, Vitest, ESLint en Prettier, en `strict` in tsconfig.
-- Mappen:
-  - `src/core/`: pure logica, zonder DOM
-  - `src/ui/`
-  - `src/data/`: gegenereerde JSON
-  - `scripts/`: data-pipeline
-- **Klaar wanneer:** `npm run dev`, `npm test` en `npm run build` werken.
+## Zeldzaamheid
 
-## Fase 1 — Data
+Krillion telt wat spelers antwoorden. Wij ook, met een startwaarde zodat het vanaf dag één werkt:
 
-- `countries.json`: per land de ISO3-code, de Nederlandse en Engelse naam, aliassen (VS, USA, VK, …) en een vlag-emoji.
-- `stats.json`: per statistiek een id, de vraagtekst in het Nederlands, de eenheid, het peiljaar, de bron, een opmaakfunctie-id en `values: { ISO3: number }`.
-- `scripts/fetch-data.ts` haalt 15–25 indicatoren op via de World Bank-API. Het script draait lokaal, en we committen de JSON die eruit komt. De app haalt bij het spelen niets op.
-- `scripts/validate-data.ts` controleert dat:
-  - alle waarden groter dan 0 zijn;
-  - elke statistiek data heeft voor minstens 150 landen;
-  - er geen gelijke stand is op de eerste plaats;
-  - alle ISO-codes bestaan.
-- Bronvermelding volgens CC BY 4.0 (World Bank) in de UI.
-- **Klaar wanneer:** de validatie zonder fouten slaagt.
+- **Startwaarde (prior):** per antwoord het aantal Wikipedia-taaledities dat een artikel heeft
+  (Wikidata "sitelinks"). Labrador Retriever heeft er veel, Pumi weinig. De prior is een
+  verdeling over de antwoorden, samen goed voor `P` nep-antwoorden.
+- **Telling:** elk ingediend antwoord wordt op de server geteld (per vraag, per antwoord).
+- **Aandeel** van antwoord `i`: `(telling_i + prior_i) / (totaal + P)`. Met weinig spelers
+  bepaalt de prior het beeld; met veel spelers de echte tellingen.
+- **Punten:** `C` = het totale aandeel van alle antwoorden die vaker gegeven worden dan het jouwe
+  ("rarer than 97% of answers"). `punten = round(100 + 900 × C^1,5)`. Het populairste antwoord
+  geeft 100, een antwoord dat bijna niemand geeft bijna 1000.
+- Jouw eigen antwoord telt pas mee ná het berekenen van je score.
+- De score wordt bij het indienen vastgelegd en opgeslagen (de server verandert later, de score
+  niet). Zonder server (offline, of nog niet ingesteld) rekent het spel met alleen de prior.
 
-## Fase 2 — Kernlogica (puur, met tests)
+## Fase 10 — Data
 
-- `rng.ts`: hash van de datum naar mulberry32.
-- `puzzle.ts`: `getPuzzle(datum) → 7 stat-ids`. Altijd dezelfde uitkomst voor dezelfde datum.
-- `scoring.ts`: basisscore, tijdstraf en randgevallen (de beste keuze geeft 1000, ontbrekende data geeft 0, de limiet geeft 0).
-- `match.ts`: normaliseren (kleine letters, accenten en leestekens weg), dan rangschikken: exacte alias, dan prefix, dan substring, dan Damerau-Levenshtein met maximaal 1–2 fouten, afhankelijk van de lengte.
-- `ranking.ts`: rang van een land plus de top 5.
-- **Klaar wanneer:** er Vitest-tests zijn voor alle bovenstaande modules, inclusief goede tabellen voor matching ("nederland", "holland", "VS", "Brazilie", "brasil", "zuid korea").
+- `scripts/prompts.ts`: vraagdefinities (id, Engelse vraag, Wikidata-query of handgemaakte lijst).
+  Doel: **150+ vragen** van algemene kennis (dieren, eten, aardrijkskunde, ruimte, muziek, sport,
+  wetenschap, mythologie, …).
+- `scripts/fetch-prompts.ts`: haalt per vraag de antwoorden op (Engels label, Engelse aliassen,
+  sitelinks), gecachet; schoont op (haakjes weg, dubbelingen, te generieke namen).
+- Per vraag een JSON-bestand in `public/prompts/`, plus een index; de app laadt alleen de vragen
+  die hij nodig heeft.
+- Validatie: minimaal 25 antwoorden per vraag, geen dubbele sleutels; een rapport met de top 5
+  en een paar obscure voorbeelden per vraag om de kwaliteit te beoordelen.
+- **Klaar wanneer:** 150+ vragen door de validatie komen en de steekproef er goed uitziet.
 
-## Fase 3 — Spel-UI
+## Fase 11 — Kern
 
-- Een kleine state machine: `intro → ronde → onthulling → … → einde`.
-- Rondescherm: de vraag, een aftellende timer van 60 seconden, een invoerveld met autocomplete (bediening met pijltjes en Enter, maximaal 6 suggesties) en een knop om te bevestigen.
-- Onthulling: de waarde van het gekozen land, de rang, een scorebalk, de top 5 en de verdeling van de tijdstraf.
-- Eindscherm: totaalscore, een overzicht per ronde en de deelknop.
-- **Klaar wanneer:** je een volledige puzzel kunt spelen in de dev-server.
+- Zeldzaamheid en punten (zie boven), tiers in het Engels.
+- Vrij-tekst-matching op naam en aliassen, met meervoud en tikfouten; "onbekend" geeft null.
+- Puzzels: 7 vragen per dag of per dive-nummer uit de hele pool (seed zoals nu).
+- Opslag versie 3: één set statistieken (geen categorieën), voortgang per modus, archief.
+- **Klaar wanneer:** alles getest is met Vitest.
 
-## Fase 4 — Opslag en delen
+## Fase 12 — Interface in het Engels
 
-- De `localStorage`-state heeft een versienummer: `{ datum, rondes[], rondeStartTijd }`.
-- Herladen tijdens een ronde zet de timer niet terug, omdat de starttijd is opgeslagen.
-- Een afgeronde puzzel van vandaag toont direct het eindscherm.
-- Statistieken: aantal keer gespeeld, gemiddelde score, beste score, huidige en langste streak.
-- Delen via `navigator.share`, of als dat niet kan via kopiëren naar het klembord. De tekst bevat het puzzelnummer, de score en het emoji-raster.
-- Elke toegang tot `localStorage` zit in een try/catch, zodat het spel ook werkt zonder opslag.
-- **Klaar wanneer:** herladen, de volgende dag en de streak getest zijn, met een nepdatum via `?date=` (alleen in dev).
+- Alle teksten Engels, naam CORE DIVE. Geen categoriekeuze en geen suggestielijst meer.
+- Onthulling: tier, "rarer than X% of answers", de meest gegeven antwoorden en een paar
+  "deep cuts" die je had kunnen geven.
+- **Klaar wanneer:** de hele flow werkt op desktop en 360 px, toegankelijk.
 
-## Fase 5 — Afwerking en deploy
+## Fase 13 — Server (Supabase)
 
-- Responsief tot 360 px breed, toegankelijk (labels, `aria-live` voor de timer en de onthulling) en een donkere modus.
-- Een uitlegscherm voor nieuwe spelers.
-- Een GitHub Actions-workflow die test, bouwt en naar GitHub Pages publiceert.
-- **Klaar wanneer:** de live URL werkt en Lighthouse voor toegankelijkheid minstens 95 scoort.
-
-## Versie 2 — "Graaf naar de kern" (plan, 13 november 2026)
-
-Nieuwe richting, geïnspireerd op de sfeer van Krillion (pixel-art, retro-font, één antwoord
-per vraag, hoe beter je antwoord hoe dieper je zakt). Eigen tekeningen en eigen code; niets
-wordt gekopieerd. De spelregels van versie 1 (log-score, tijdstraf) blijven de basis.
-
-Beslissingen:
-
-- Geen server. Score en statistieken blijven lokaal; delen via de deelknop. Een publieke
-  ranglijst kan later met Supabase.
-- Drie categorieën om mee te starten: **Landen** (World Bank, zoals nu), **Dieren** en
-  **Sport**. Dieren en sport komen uit handgemaakte JSON-bestanden met bronvermelding per
-  vraag, ongeveer 20 vragen per categorie.
-- Makkelijker: alleen bekende statistieken (inwoners, oppervlakte, bbp, …); de obscure
-  World Bank-indicatoren verdwijnen uit de dagelijkse puzzel.
-- Twee spelmodi: **Dagelijks** (één puzzel per dag per categorie) en **Onbeperkt**
-  (willekeurige puzzels, `?game=N` om een puzzel te delen of opnieuw te spelen).
-
-### Fase 6 — Generieke categorieën
-
-- `Stat` krijgt een `category` en een antwoordtype: `country` (autocomplete op landen) of
-  `item` (autocomplete op een lijst van dieren/sporters/teams per vraag).
-- `src/data/categories/{landen,dieren,sport}.json`; de matcher werkt op elke lijst van
-  namen met aliassen.
-- Categoriekeuze op het startscherm; voortgang en statistieken per categorie in localStorage.
-- **Klaar wanneer:** de bestaande tests nog slagen en elke categorie speelbaar is in de dev-server.
-- **Status:** klaar (13 november 2026). Landen 14 statistieken, Dieren 74 dieren / 10 vragen,
-  Sport 10 vragen op de landenlijst. Opslagversie 2, `?cat=` in de URL.
-
-### Fase 7 — Onbeperkt spelen
-
-- `getPuzzle(seed)` werkt al deterministisch; onbeperkt = seed uit `?game=N`, "Volgende
-  puzzel" verhoogt N. Dagelijks blijft de datum-seed.
-- Onbeperkte scores tellen niet mee in de streak, wel in een aparte "beste onbeperkt".
-- **Klaar wanneer:** je eindeloos kunt doorspelen en een puzzel via URL kunt delen.
-- **Status:** klaar (14 november 2026). Schakelaar Dagelijks/Onbeperkt op het keuzescherm; de
-  onbeperkte reeks begint per categorie bij #1 en gaat na een afgeronde puzzel door naar de
-  volgende. `?cat=dieren&game=3` opent een puzzel direct; de deeltekst bevat die link.
-  Onbeperkte scores staan apart (gespeeld, gemiddeld, beste) en raken de streak niet.
-
-### Fase 8 — Nieuwe look: de doorsnede van de aarde
-
-- Pixel-art stijl: retro-font (Google Fonts, bijv. "Press Start 2P" voor koppen en "VT323"
-  voor tekst), scanline-sfeer, donkere panelen met lichte rand.
-- Achtergrond: een verticale doorsnede van de aarde als laag-voor-laag getekend canvas
-  (gras/korst → aardmantel → buitenkern → binnenkern), met een dieptemeter rechts en
-  weetjes per laag ("hier is het 1000 °C", "diepste boorgat ooit: 12 km", …).
-- Score → diepte: 1000 punten = de kern. Na elk antwoord graaft een pixel-graafmachine
-  geanimeerd naar de nieuwe diepte (CSS/canvas, respecteert `prefers-reduced-motion`).
-- Tiers per ronde, in plaats van alleen een getal: bijv. **Oppervlakte** (0), **Korst**
-  (< 300), **Mantel** (< 600), **Buitenkern** (< 900), **Binnenkern** (≥ 900), met een
-  korte spreuk per tier.
-- Boven: diepte, voortgangsblokjes (7), score. Onder: timer-cirkel, invoerveld, knop
-  "GRAAF". Daarna een "DIEPER ▼"-knop.
-- Optioneel geluid (uit standaard, aan/uit-knop).
-- **Klaar wanneer:** de hele flow draait in de nieuwe stijl op desktop en 360 px, en
-  het spel nog steeds toegankelijk is (toetsenbord, schermlezer, reduced motion).
-- **Status:** klaar (14 november 2026). Diepte-model in `src/core/depth.ts` (7000 punten =
-  6.371 km, zes lagen met ankerpunten, 13 weetjes, 6 tiers: Mis gegraven, Zandkorrel, Kiezel,
-  Rotsblok, Magma, Kern). Scène in `src/ui/scene.ts` met canvas-pixeltexturen, HUD in
-  `src/ui/hud.ts`, geluid in `src/ui/sound.ts` (standaard uit). Lettertypes Press Start 2P en
-  VT323 lokaal via `@fontsource` (geen verzoeken naar Google). Eén vast donker paneelthema.
-  Tijdens het testen gevonden en opgelost: klikken op GRAAF sloot eerst de suggestielijst, waardoor
-  een gemarkeerde suggestie verloren ging. Nog niet gedaan: Lighthouse-meting op de live URL.
-
-### Fase 9 — Afwerking
-
-- Archief van eerdere dagpuzzels (`?date=` wordt een echte functie).
-- Deeltekst per categorie en modus.
-- Lighthouse ≥ 95 toegankelijkheid; deploy via de bestaande workflow.
-- **Status:** archief en deeltekst klaar (14 november 2026). Derde modus ARCHIEF op het startscherm,
-  per categorie alle eerdere dagen met datum en score; `?cat=landen&archief=2026-11-13` opent er
-  één direct (`?date=` blijft een testvlag voor "vandaag"). Archiefpuzzels hebben dezelfde vragen
-  als die dag, tellen niet mee voor streak of statistieken, en de eerste eindscore per datum komt
-  in `landenspel:geschiedenis:<categorie>`. Toegankelijkheid: axe-core (de regels achter Lighthouse)
-  vindt 0 overtredingen op keuze-, archief-, uitleg-, ronde-, onthullings- en eindscherm; contrast
-  op de half-doorzichtige panelen met de hand nagerekend (≥ 5 : 1). Een officiële Lighthouse-score
-  ontbreekt nog: de PageSpeed-API weigert verzoeken zonder sleutel en de webversie bleef hangen.
+- Tabel met tellingen per (vraag, antwoord); een databasefunctie die een antwoord telt en de
+  tellingen van die vraag teruggeeft. Leesrechten voor iedereen, schrijven alleen via die functie.
+- In de app: `VITE_SUPABASE_URL` en `VITE_SUPABASE_ANON_KEY` (de publieke sleutel; de geheime
+  service-sleutel komt nooit in de app). Zonder die variabelen of bij een fout: alleen de prior.
+- Bekende beperking: zonder inlog kan iemand de tellingen vervuilen door veel te spammen. Voor
+  een hobbyspel acceptabel; later eventueel een limiet per apparaat.
+- **Klaar wanneer:** twee browsers elkaars antwoorden zien meetellen.
 
 ## Status (14 november 2026)
 
-Fase 0 t/m 9 zijn gebouwd. Live via GitHub Actions op https://jasonkins5-oss.github.io/landenspel/
-(repository `jasonkins5-oss/landenspel`). Openstaand:
+Versie 2 staat live op https://jasonkins5-oss.github.io/landenspel/. Versie 3 is gestart.
 
-- Een officiële Lighthouse-score (zie fase 9).
-- De statistiek "vrouwen in het parlement" komt er bewust niet in: sinds fase 6 houden we de
-  landenvragen bij bekende statistieken, en opnieuw ophalen zou de bestaande puzzels veranderen.
+Versie 3 is lokaal gebouwd en getest (nog niet live):
+
+- 186 vragen met samen ~103.000 antwoorden uit Wikidata. Labels: Engels, anders "mul" (zonder
+  die terugval ontbraken o.a. Toy Story en Up). Vogels en kevers staan nog met hun eerdere lijst
+  (Wikidata gaf bij opnieuw ophalen een time-out).
+- Punten: gemiddelde van de verrassingswaarde (log-aandeel tussen populairste antwoord en de
+  bodem) en de plek in de rangorde. Een eerste versie met alleen "aandeel dat gewoner is" gaf
+  alles buiten de top tien bijna 1000 punten.
+- Supabase-project ingericht en getest: lezen werkt, tellen alleen via `record_answer`, direct
+  schrijven en onzin-invoer worden geweigerd. Tijdens het testen zijn een handvol antwoorden
+  echt geteld (plus één `selftest`-rij); met een prior van 60 nep-antwoorden maakt dat niets uit.
+- Nog te doen voor live: de twee Supabase-waarden als GitHub Actions-variabelen zetten, pushen.

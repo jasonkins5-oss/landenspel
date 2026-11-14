@@ -1,59 +1,27 @@
-import countriesJson from './countries.json';
-import landenStatsJson from './categories/landen-stats.json';
-import dierenJson from './categories/dieren.json';
-import sportStatsJson from './categories/sport-stats.json';
-import type { Category, CategoryId, Country, Item, Stat } from './types';
+import promptsJson from './prompts.json';
+import { fromFile, type PromptAnswers, type PromptFile, type PromptMeta } from '../core/answers';
 
-// countries.json en landen-stats.json worden gegenereerd door `npm run data:fetch`;
-// dieren.json en sport-stats.json zijn handwerk. Alles wordt gecontroleerd door `npm run data:validate`.
-export const countries = countriesJson as Country[];
-/** De statistieken van de categorie Landen (versie 1 noemde dit `stats`). */
-export const stats = landenStatsJson as Stat[];
+/**
+ * De index van alle vragen (gegenereerd door `npm run data:fetch`). De antwoorden per vraag
+ * staan in public/prompts/<id>.json en worden pas geladen als een puzzel ze nodig heeft.
+ */
+export const prompts = promptsJson as PromptMeta[];
 
-const WORLD_BANK = { text: 'World Bank (CC BY 4.0)', url: 'https://data.worldbank.org/' };
-const WIKIPEDIA = { text: 'Wikipedia (CC BY-SA 4.0)', url: 'https://www.wikipedia.org/' };
+const cache = new Map<string, Promise<PromptAnswers>>();
 
-export const categories: Category[] = [
-  {
-    id: 'landen',
-    title: 'Landen',
-    tagline: 'Welk land heeft de meeste inwoners, het grootste bos, het hoogste bbp?',
-    emoji: '🌍',
-    placeholder: 'Typ een land…',
-    noun: 'land',
-    attribution: WORLD_BANK,
-    minCoverage: 150,
-    items: countries,
-    stats,
-  },
-  {
-    id: 'dieren',
-    title: 'Dieren',
-    tagline: 'Welk dier is het snelst, het zwaarst, het oudst?',
-    emoji: '🐘',
-    placeholder: 'Typ een dier…',
-    noun: 'dier',
-    attribution: WIKIPEDIA,
-    minCoverage: 15,
-    items: (dierenJson as { items: Item[]; stats: Stat[] }).items,
-    stats: (dierenJson as { items: Item[]; stats: Stat[] }).stats,
-  },
-  {
-    id: 'sport',
-    title: 'Sport',
-    tagline: 'Welk land won het meest: medailles, WK-finales, de Tour?',
-    emoji: '🏅',
-    placeholder: 'Typ een land…',
-    noun: 'land',
-    attribution: WIKIPEDIA,
-    minCoverage: 20,
-    items: countries,
-    stats: sportStatsJson as unknown as Stat[],
-  },
-];
-
-export function findCategory(id: string | null | undefined): Category | undefined {
-  return categories.find((c) => c.id === (id as CategoryId));
+/** Laadt de antwoorden van één vraag; elke vraag wordt maar één keer opgehaald. */
+export function loadAnswers(id: string): Promise<PromptAnswers> {
+  let pending = cache.get(id);
+  if (!pending) {
+    pending = fetch(`${import.meta.env.BASE_URL}prompts/${encodeURIComponent(id)}.json`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`Could not load prompt ${id} (${res.status})`);
+        return res.json() as Promise<PromptFile>;
+      })
+      .then(fromFile);
+    // Bij een fout de cache leegmaken, zodat een volgende poging opnieuw ophaalt.
+    pending.catch(() => cache.delete(id));
+    cache.set(id, pending);
+  }
+  return pending;
 }
-
-export type { Category, CategoryId, Country, Item, Stat } from './types';

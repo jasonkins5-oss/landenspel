@@ -61,7 +61,6 @@ body {
 .hud__panel,
 .hud__btn,
 .answer-input,
-.category-card,
 .mode-switch {
   clip-path: polygon(
     var(--notch) 0,
@@ -83,7 +82,6 @@ body {
 .btn:focus-visible,
 .hud__btn:focus-visible,
 .answer-input:focus-visible,
-.category-card:focus-visible,
 .mode-switch__btn:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 3px var(--gold);
@@ -618,7 +616,7 @@ body {
 
 .mode-switch {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 4px;
   padding: 4px;
   background: var(--panel);
@@ -649,105 +647,7 @@ body {
   font-size: 1.1rem;
 }
 
-.category-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.category-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  padding: 16px 18px;
-  border: none;
-  text-align: left;
-  font: inherit;
-  color: var(--ink);
-  background: var(--panel);
-  box-shadow: inset 0 0 0 2px var(--line);
-  cursor: pointer;
-}
-
-.category-card:hover {
-  box-shadow: inset 0 0 0 2px var(--cyan);
-}
-
-.category-card--done {
-  box-shadow: inset 0 0 0 2px var(--line-bright);
-}
-
-.category-card__emoji {
-  font-size: 2rem;
-}
-
-.category-card__body {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.category-card__title {
-  font-family: var(--font-pixel);
-  font-size: 0.85rem;
-}
-
-.category-card__tagline {
-  color: var(--muted);
-  font-size: 1.1rem;
-}
-
-.category-card__status {
-  color: var(--cyan);
-  font-size: 1.1rem;
-}
-
-.category-card__go {
-  font-family: var(--font-pixel);
-  color: var(--pink);
-  font-size: 0.8rem;
-}
-
 /* ===== Archief ===== */
-
-.mode-switch {
-  grid-template-columns: repeat(3, 1fr);
-}
-
-.archive-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-.archive-tab {
-  padding: 10px 12px;
-  border: none;
-  background: var(--panel);
-  box-shadow: inset 0 0 0 2px var(--line);
-  color: var(--ink);
-  font-family: var(--font-pixel);
-  font-size: 0.55rem;
-  cursor: pointer;
-}
-
-.archive-tab[aria-checked='true'] {
-  background: var(--cyan);
-  color: var(--navy);
-  box-shadow: none;
-}
-
-.archive-tab:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 3px var(--gold);
-}
 
 .archive-list {
   display: grid;
@@ -806,6 +706,96 @@ body {
   padding: 14px;
   background: var(--panel);
   color: var(--muted);
+}
+
+/* ===== Startscherm: dive-kaart ===== */
+
+.dive-card {
+  text-align: center;
+  padding: 22px 20px;
+}
+
+.dive-card__title {
+  margin: 0 0 8px;
+  font-family: var(--font-pixel);
+  font-size: 0.85rem;
+  color: var(--pink);
+}
+
+.dive-card__status {
+  margin: 0 0 16px;
+  color: var(--muted);
+}
+
+.dive-card__start {
+  width: 100%;
+  max-width: 360px;
+  padding: 18px;
+  font-size: 0.85rem;
+  letter-spacing: 0.15em;
+}
+
+.pool-note {
+  margin: 14px 0 0;
+  padding: 4px 10px;
+  align-self: center;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 1.05rem;
+  text-align: center;
+}
+
+/* ===== Ronde: melding bij een onbekend antwoord ===== */
+
+.answer-feedback {
+  min-height: 1.4em;
+  margin: 0 0 8px;
+  padding: 0 4px;
+  text-align: center;
+  font-size: 1.25rem;
+  color: var(--ink);
+  text-shadow:
+    2px 2px 0 var(--panel-solid),
+    -1px -1px 0 var(--panel-solid);
+}
+
+.answer-feedback:empty {
+  visibility: hidden;
+}
+
+/* ===== Onthulling: extra regels ===== */
+
+.tier__official {
+  margin: -4px 0 8px;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.tier__rarity {
+  margin: 0 0 8px;
+  color: var(--cyan);
+  font-size: 1.3rem;
+}
+
+.reveal-label {
+  margin: 12px 0 6px;
+  font-family: var(--font-pixel);
+  font-size: 0.55rem;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.deep-cuts {
+  margin: 0 0 12px;
+  color: var(--gold);
+  font-size: 1.25rem;
+}
+
+.round-summary__answer {
+  display: block;
+  color: var(--muted);
+  font-size: 1rem;
 }
 
 /* ===== Uitleg ===== */
@@ -908,9 +898,6 @@ body {
 }
 
 /* De suggesties klappen boven het veld uit; de dock mag ze dus niet wegknippen. */
-.dock:has(.suggestions:not([hidden])) {
-  clip-path: none;
-}
 
 .timer {
   position: relative;
@@ -956,11 +943,6 @@ body {
   color: var(--danger);
 }
 
-.combobox {
-  position: relative;
-  min-width: 0;
-}
-
 .answer-input {
   width: 100%;
   padding: 12px 14px;
@@ -989,35 +971,6 @@ body {
   75% {
     transform: translateX(4px);
   }
-}
-
-.suggestions {
-  position: absolute;
-  z-index: 30;
-  left: 0;
-  right: 0;
-  bottom: calc(100% + 8px);
-  margin: 0;
-  padding: 4px;
-  list-style: none;
-  background: var(--panel-solid);
-  box-shadow:
-    inset 0 0 0 2px var(--line-bright),
-    0 6px 0 rgba(0, 0, 0, 0.35);
-  max-height: 280px;
-  overflow-y: auto;
-}
-
-.suggestion {
-  padding: 8px 10px;
-  font-size: 1.35rem;
-  cursor: pointer;
-}
-
-.suggestion--active,
-.suggestion:hover {
-  background: var(--cyan);
-  color: var(--navy);
 }
 
 .submit-btn {

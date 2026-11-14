@@ -31,11 +31,11 @@ export function createHud(options: HudOptions): Hud {
   const el = document.createElement('header');
   el.className = 'hud';
   el.innerHTML = `
-    <h1 class="visually-hidden">Landenspel</h1>
-    <button type="button" class="hud__btn hud__home" aria-label="Menu: kies een categorie">${ICON_MENU}</button>
+    <h1 class="visually-hidden">CORE DIVE</h1>
+    <button type="button" class="hud__btn hud__home" aria-label="Menu">${ICON_MENU}</button>
     <div class="hud__stats" hidden>
       <div class="hud__panel hud__depth">
-        <span class="hud__label">DIEPTE</span>
+        <span class="hud__label">DEPTH</span>
         <span class="hud__value hud__value--cyan" data-depth>0 m</span>
       </div>
       <div class="hud__progress">
@@ -48,8 +48,8 @@ export function createHud(options: HudOptions): Hud {
       </div>
     </div>
     <div class="hud__right">
-      <button type="button" class="hud__btn hud__sound" aria-pressed="false" aria-label="Geluid">${ICON_SOUND_OFF}</button>
-      <button type="button" class="hud__btn hud__help" aria-label="Uitleg">?</button>
+      <button type="button" class="hud__btn hud__sound" aria-pressed="false" aria-label="Sound">${ICON_SOUND_OFF}</button>
+      <button type="button" class="hud__btn hud__help" aria-label="How to play">?</button>
     </div>
   `;
 
@@ -80,7 +80,7 @@ export function createHud(options: HudOptions): Hud {
       depthEl.textContent = formatDepth(unitsToKm(state.depthUnits));
       scoreEl.textContent = String(state.score);
       const shown = Math.min(state.currentRound + 1, state.totalRounds);
-      roundEl.textContent = `VRAAG ${shown} VAN ${state.totalRounds}`;
+      roundEl.textContent = `PROMPT ${shown} OF ${state.totalRounds}`;
       blocks.innerHTML = Array.from({ length: state.totalRounds }, (_, i) => {
         const score = state.results[i];
         if (score !== undefined)
