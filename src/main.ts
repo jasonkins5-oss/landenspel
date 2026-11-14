@@ -2,19 +2,22 @@ import '@fontsource/press-start-2p/400.css';
 import '@fontsource/vt323/400.css';
 import './style.css';
 import { categories, findCategory } from './data';
-import { utcDateKey } from './core/rng';
+import type { PuzzleRef } from './core/game';
+import { parseArchiveDate, utcDateKey } from './core/rng';
 import { browserStore } from './core/storage';
 import { startApp } from './ui/app';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
 const params = new URLSearchParams(location.search);
-// `?date=YYYY-MM-DD` overschrijft de dag, alleen voor handmatig testen.
+// `?date=YYYY-MM-DD` overschrijft "vandaag", alleen voor handmatig testen.
 const dateKey = params.get('date') ?? utcDateKey();
-// `?cat=dieren` opent direct de dagpuzzel van een categorie; met `&game=42` de onbeperkte puzzel #42.
+// `?cat=dieren` opent direct de dagpuzzel van een categorie; met `&game=42` de onbeperkte
+// puzzel #42 en met `&archief=2026-11-13` de dagpuzzel van die datum uit het archief.
 const initialCategory = findCategory(params.get('cat')) ?? null;
 const gameParam = Number(params.get('game'));
 const initialGameNumber = Number.isInteger(gameParam) && gameParam > 0 ? gameParam : null;
+const initialArchiveDate = parseArchiveDate(params.get('archief'), dateKey);
 
 app.innerHTML = `
   <div id="scene-root"></div>
@@ -30,15 +33,14 @@ app.innerHTML = `
   </footer>
 `;
 
-function urlFor(
-  category: { id: string } | null,
-  ref: { mode: 'daily' } | { mode: 'unlimited'; number: number } | null,
-): URL {
+function urlFor(category: { id: string } | null, ref: PuzzleRef | null): URL {
   const url = new URL(location.href);
   url.searchParams.delete('cat');
   url.searchParams.delete('game');
+  url.searchParams.delete('archief');
   if (category) url.searchParams.set('cat', category.id);
   if (ref?.mode === 'unlimited') url.searchParams.set('game', String(ref.number));
+  if (ref?.mode === 'archive') url.searchParams.set('archief', ref.dateKey);
   return url;
 }
 
@@ -51,6 +53,7 @@ startApp({
   store: browserStore(),
   initialCategory,
   initialGameNumber,
+  initialArchiveDate,
   onPuzzleChange: (category, ref) => history.replaceState(null, '', urlFor(category, ref)),
   shareUrlFor: (category, ref) => {
     const url = urlFor(category, ref);

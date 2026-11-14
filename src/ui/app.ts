@@ -16,15 +16,18 @@ import {
 import {
   hasSeenIntro,
   type KeyValueStore,
+  loadHistory,
   loadProgress,
   loadStats,
   markIntroSeen,
   recordCompletion,
+  recordHistory,
   recordUnlimitedCompletion,
   saveProgress,
   saveStats,
 } from '../core/storage';
-import { renderCategoryScreen, type CategoryStatus } from './category-screen';
+import { archiveDates, puzzleNumber } from '../core/rng';
+import { renderCategoryScreen, type ArchiveDay, type CategoryStatus } from './category-screen';
 import { renderIntroScreen } from './intro-screen';
 import { renderRoundScreen, type RoundScreenHandle } from './round-screen';
 import { renderRevealScreen } from './reveal-screen';
@@ -47,9 +50,11 @@ export interface AppOptions {
   initialCategory?: Category | null;
   /** Onbeperkte puzzel om direct mee te beginnen (`?game=N`); vereist initialCategory. */
   initialGameNumber?: number | null;
+  /** Archiefpuzzel om direct mee te beginnen (`?archief=YYYY-MM-DD`); vereist initialCategory. */
+  initialArchiveDate?: string | null;
   /** Wordt aangeroepen als de gekozen puzzel wisselt, zodat de URL mee kan veranderen. */
   onPuzzleChange?: (category: Category | null, ref: PuzzleRef | null) => void;
-  /** Geeft de deelbare link voor een onbeperkte puzzel. */
+  /** Geeft de deelbare link voor een onbeperkte of archiefpuzzel. */
   shareUrlFor?: (category: Category, ref: PuzzleRef) => string;
 }
 
@@ -67,7 +72,13 @@ const DIG_MS = 900;
 export function startApp(options: AppOptions): void {
   const { root, categories, dateKey, store } = options;
   let activeRound: RoundScreenHandle | null = null;
-  let mode: GameMode = options.initialGameNumber ? 'unlimited' : 'daily';
+  let mode: GameMode = options.initialGameNumber
+    ? 'unlimited'
+    : options.initialArchiveDate
+      ? 'archive'
+      : 'daily';
+  /** De categorie die het archief laat zien. */
+  let archiveCategory: Category = options.initialCategory ?? categories[0]!;
   /** Het scherm waarnaar de help-knop terugkeert. */
   let resume: () => void = () => showCategories();
 
@@ -102,7 +113,8 @@ export function startApp(options: AppOptions): void {
 
   /** De puzzel die een categorie in deze modus nu "aan de beurt" heeft. */
   function currentRef(category: Category, forMode: GameMode): PuzzleRef {
-    if (forMode === 'daily') return { mode: 'daily', dateKey };
+    // Het archief kiest zelf een datum; vanuit de categoriekaarten is het altijd vandaag.
+    if (forMode !== 'unlimited') return { mode: 'daily', dateKey };
     const saved = loadProgress(store, category.id, { mode: 'unlimited', number: 0 });
     if (!saved) return { mode: 'unlimited', number: FIRST_UNLIMITED_GAME };
     // Een afgeronde puzzel: de volgende staat klaar.
@@ -134,6 +146,20 @@ export function startApp(options: AppOptions): void {
     };
   }
 
+  function archiveDays(category: Category): ArchiveDay[] {
+    const history = loadHistory(store, category.id);
+    return archiveDates(dateKey).map((d) => {
+      // Er is per categorie hooguit één archiefpuzzel "bezig"; loadProgress geeft null voor de rest.
+      const progress = loadProgress(store, category.id, { mode: 'archive', dateKey: d });
+      return {
+        dateKey: d,
+        number: puzzleNumber(d),
+        score: history[d] ?? null,
+        roundsPlayed: progress?.rounds.length ?? 0,
+      };
+    });
+  }
+
   function showCategories() {
     resume = showCategories;
     options.onPuzzleChange?.(null, null);
@@ -150,6 +176,16 @@ export function startApp(options: AppOptions): void {
           mode = next;
           showCategories();
           root.querySelector<HTMLButtonElement>(`[data-mode="${next}"]`)?.focus();
+        },
+        archive: {
+          category: archiveCategory,
+          days: archiveDays(archiveCategory),
+          onCategory: (category) => {
+            archiveCategory = category;
+            showCategories();
+            root.querySelector<HTMLButtonElement>(`[data-archive-cat="${category.id}"]`)?.focus();
+          },
+          onSelect: (d) => play(archiveCategory, { mode: 'archive', dateKey: d }),
         },
       }),
     );
@@ -186,16 +222,28 @@ export function startApp(options: AppOptions): void {
       });
     }
 
+    /**
+     * Dagpuzzel: statistieken + streak + geschiedenis. Archief: alleen de geschiedenis.
+     * Onbeperkt: de aparte onbeperkt-statistieken.
+     */
     function recordStats() {
-      const stats = loadStats(store, category.id);
       const score = totalScore(game);
-      saveStats(
-        store,
-        category.id,
-        ref.mode === 'daily'
-          ? recordCompletion(stats, ref.dateKey, score)
-          : recordUnlimitedCompletion(stats, score),
-      );
+      if (ref.mode === 'unlimited') {
+        saveStats(
+          store,
+          category.id,
+          recordUnlimitedCompletion(loadStats(store, category.id), score),
+        );
+        return;
+      }
+      recordHistory(store, category.id, ref.dateKey, score);
+      if (ref.mode === 'daily') {
+        saveStats(
+          store,
+          category.id,
+          recordCompletion(loadStats(store, category.id), ref.dateKey, score),
+        );
+      }
     }
 
     function showRound() {
@@ -264,12 +312,15 @@ export function startApp(options: AppOptions): void {
         renderEndScreen({
           game,
           stats: loadStats(store, category.id),
-          onOtherCategory: showCategories,
+          onOtherCategory: () => {
+            if (ref.mode === 'archive') archiveCategory = category;
+            showCategories();
+          },
           onNextPuzzle:
             ref.mode === 'unlimited'
               ? () => play(category, { mode: 'unlimited', number: ref.number + 1 })
               : undefined,
-          shareUrl: ref.mode === 'unlimited' ? options.shareUrlFor?.(category, ref) : undefined,
+          shareUrl: ref.mode !== 'daily' ? options.shareUrlFor?.(category, ref) : undefined,
         }),
       );
     }
@@ -280,9 +331,11 @@ export function startApp(options: AppOptions): void {
   }
 
   const start = () => {
-    const { initialCategory, initialGameNumber } = options;
+    const { initialCategory, initialGameNumber, initialArchiveDate } = options;
     if (initialCategory && initialGameNumber)
       play(initialCategory, { mode: 'unlimited', number: initialGameNumber });
+    else if (initialCategory && initialArchiveDate)
+      play(initialCategory, { mode: 'archive', dateKey: initialArchiveDate });
     else if (initialCategory) play(initialCategory, { mode: 'daily', dateKey });
     else showCategories();
   };

@@ -11,6 +11,25 @@ export function puzzleNumber(dateKey: string): number {
   return Math.round(ms / 86_400_000) + 1;
 }
 
+/** Alle eerdere dagpuzzels vóór `todayKey`, nieuwste eerst. Leeg op de eerste dag. */
+export function archiveDates(todayKey: string): string[] {
+  const dates: string[] = [];
+  const first = Date.parse(`${FIRST_PUZZLE_DATE}T00:00:00Z`);
+  for (let t = Date.parse(`${todayKey}T00:00:00Z`) - 86_400_000; t >= first; t -= 86_400_000) {
+    dates.push(utcDateKey(new Date(t)));
+  }
+  return dates;
+}
+
+/** Een geldige, eerdere puzzeldatum voor het archief ("YYYY-MM-DD"), anders null. */
+export function parseArchiveDate(input: string | null, todayKey: string): string | null {
+  if (!input || !/^\d{4}-\d{2}-\d{2}$/.test(input)) return null;
+  const t = Date.parse(`${input}T00:00:00Z`);
+  if (Number.isNaN(t) || utcDateKey(new Date(t)) !== input) return null;
+  if (input < FIRST_PUZZLE_DATE || input >= todayKey) return null;
+  return input;
+}
+
 /** FNV-1a: stabiele 32-bits hash van een string, als seed voor de generator. */
 export function hashString(input: string): number {
   let h = 0x811c9dc5;

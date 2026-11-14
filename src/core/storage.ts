@@ -10,9 +10,15 @@ import type { CategoryId } from '../data/types';
 import type { GameMode, PuzzleRef } from './game';
 
 export const STORAGE_VERSION = 2;
+const PROGRESS_PREFIX: Record<GameMode, string> = {
+  daily: 'landenspel:progress',
+  unlimited: 'landenspel:onbeperkt',
+  archive: 'landenspel:archief',
+};
 export const progressKey = (category: CategoryId, mode: GameMode = 'daily') =>
-  mode === 'daily' ? `landenspel:progress:${category}` : `landenspel:onbeperkt:${category}`;
+  `${PROGRESS_PREFIX[mode]}:${category}`;
 export const statsKey = (category: CategoryId) => `landenspel:stats:${category}`;
+export const historyKey = (category: CategoryId) => `landenspel:geschiedenis:${category}`;
 
 export interface SavedRound {
   statId: string;
@@ -23,7 +29,7 @@ export interface SavedRound {
 /** Voortgang van één puzzel in één categorie en modus. Een nieuwere puzzel overschrijft de vorige. */
 export interface SavedProgress {
   version: number;
-  /** "2026-11-13" (dagpuzzel) of "42" (onbeperkte puzzel #42). */
+  /** "2026-11-13" (dag- of archiefpuzzel) of "42" (onbeperkte puzzel #42). */
   puzzleKey: string;
   rounds: SavedRound[];
   /** Epoch-ms waarop de lopende ronde begon, zodat herladen de timer niet terugzet. */
@@ -95,8 +101,36 @@ export function loadProgress(
   const saved = readJson<SavedProgress>(store, progressKey(category, ref.mode));
   if (!saved || saved.version !== STORAGE_VERSION || !Array.isArray(saved.rounds)) return null;
   const wanted =
-    ref.mode === 'daily' ? ref.dateKey : ref.number === 0 ? saved.puzzleKey : String(ref.number);
+    ref.mode !== 'unlimited'
+      ? ref.dateKey
+      : ref.number === 0
+        ? saved.puzzleKey
+        : String(ref.number);
   return saved.puzzleKey === wanted ? saved : null;
+}
+
+/** Eindscores van voltooide dagpuzzels (vandaag of uit het archief), per datum. */
+export type PuzzleHistory = Record<string, number>;
+
+export function loadHistory(store: KeyValueStore, category: CategoryId): PuzzleHistory {
+  const saved = readJson<{ version: number; scores: PuzzleHistory }>(store, historyKey(category));
+  if (!saved || saved.version !== STORAGE_VERSION || typeof saved.scores !== 'object') return {};
+  return saved.scores ?? {};
+}
+
+/** Bewaart de eerste eindscore van een datum; een tweede keer spelen overschrijft niets. */
+export function recordHistory(
+  store: KeyValueStore,
+  category: CategoryId,
+  dateKey: string,
+  score: number,
+): void {
+  const scores = loadHistory(store, category);
+  if (dateKey in scores) return;
+  writeJson(store, historyKey(category), {
+    version: STORAGE_VERSION,
+    scores: { ...scores, [dateKey]: score },
+  });
 }
 
 export function saveProgress(

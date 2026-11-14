@@ -1,5 +1,38 @@
 import { describe, expect, it } from 'vitest';
-import { hashString, mulberry32, puzzleNumber, shuffle, utcDateKey } from './rng';
+import {
+  FIRST_PUZZLE_DATE,
+  archiveDates,
+  hashString,
+  mulberry32,
+  parseArchiveDate,
+  puzzleNumber,
+  shuffle,
+  utcDateKey,
+} from './rng';
+
+describe('archiveDates', () => {
+  it('is leeg op de eerste dag en geeft daarna alle eerdere dagen, nieuwste eerst', () => {
+    expect(archiveDates(FIRST_PUZZLE_DATE)).toEqual([]);
+    expect(archiveDates('2026-11-14')).toEqual(['2026-11-13']);
+    expect(archiveDates('2026-12-02').slice(0, 3)).toEqual([
+      '2026-12-01',
+      '2026-11-30',
+      '2026-11-29',
+    ]);
+    expect(archiveDates('2026-12-02')).toHaveLength(puzzleNumber('2026-12-02') - 1);
+  });
+});
+
+describe('parseArchiveDate', () => {
+  it('accepteert alleen echte, eerdere puzzeldatums', () => {
+    expect(parseArchiveDate('2026-11-13', '2026-11-20')).toBe('2026-11-13');
+    expect(parseArchiveDate('2026-11-20', '2026-11-20')).toBeNull(); // vandaag hoort bij Dagelijks
+    expect(parseArchiveDate('2026-11-12', '2026-11-20')).toBeNull(); // vóór puzzel #1
+    expect(parseArchiveDate('2026-02-30', '2027-01-01')).toBeNull();
+    expect(parseArchiveDate('13-11-2026', '2026-11-20')).toBeNull();
+    expect(parseArchiveDate(null, '2026-11-20')).toBeNull();
+  });
+});
 
 describe('utcDateKey', () => {
   it('gebruikt UTC, niet de lokale dag', () => {

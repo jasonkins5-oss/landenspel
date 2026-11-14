@@ -149,13 +149,20 @@ Beslissingen:
 - Archief van eerdere dagpuzzels (`?date=` wordt een echte functie).
 - Deeltekst per categorie en modus.
 - Lighthouse ≥ 95 toegankelijkheid; deploy via de bestaande workflow.
+- **Status:** archief en deeltekst klaar (14 november 2026). Derde modus ARCHIEF op het startscherm,
+  per categorie alle eerdere dagen met datum en score; `?cat=landen&archief=2026-11-13` opent er
+  één direct (`?date=` blijft een testvlag voor "vandaag"). Archiefpuzzels hebben dezelfde vragen
+  als die dag, tellen niet mee voor streak of statistieken, en de eerste eindscore per datum komt
+  in `landenspel:geschiedenis:<categorie>`. Toegankelijkheid: axe-core (de regels achter Lighthouse)
+  vindt 0 overtredingen op keuze-, archief-, uitleg-, ronde-, onthullings- en eindscherm; contrast
+  op de half-doorzichtige panelen met de hand nagerekend (≥ 5 : 1). Een officiële Lighthouse-score
+  ontbreekt nog: de PageSpeed-API weigert verzoeken zonder sleutel en de webversie bleef hangen.
 
-## Status (13 november 2026)
+## Status (14 november 2026)
 
-Fase 0 t/m 5 zijn gebouwd en lokaal gecontroleerd (138 tests, lint, build, handmatig in de browser
-op desktop en 360 px, licht en donker). De repository staat op GitHub
-(`jasonkins5-oss/landenspel`) en het spel is live via GitHub Actions op
-https://jasonkins5-oss.github.io/landenspel/. Nog niet gedaan:
+Fase 0 t/m 9 zijn gebouwd. Live via GitHub Actions op https://jasonkins5-oss.github.io/landenspel/
+(repository `jasonkins5-oss/landenspel`). Openstaand:
 
-- Lighthouse draaien op de live URL.
-- De statistiek "vrouwen in het parlement" ophalen (`npm run data:fetch`); die mislukte eenmalig door een 502.
+- Een officiële Lighthouse-score (zie fase 9).
+- De statistiek "vrouwen in het parlement" komt er bewust niet in: sinds fase 6 houden we de
+  landenvragen bij bekende statistieken, en opnieuw ophalen zou de bestaande puzzels veranderen.

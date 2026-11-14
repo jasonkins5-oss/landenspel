@@ -3,7 +3,9 @@ import type { PuzzleRef } from './game';
 import {
   EMPTY_STATS,
   effectiveStreak,
+  loadHistory,
   loadProgress,
+  recordHistory,
   loadStats,
   memoryStore,
   progressKey,
@@ -132,6 +134,32 @@ describe('statistieken en streak', () => {
       unlimitedTotalScore: 5000,
       unlimitedBest: 3000,
     });
+  });
+});
+
+describe('archief en geschiedenis', () => {
+  it('bewaart archiefvoortgang apart van de dagpuzzel', () => {
+    const store = memoryStore();
+    const archived: SavedProgress = { ...progress, puzzleKey: '2026-11-13' };
+    saveProgress(store, 'landen', 'daily', { ...progress, puzzleKey: '2026-11-20' });
+    saveProgress(store, 'landen', 'archive', archived);
+    expect(loadProgress(store, 'landen', { mode: 'archive', dateKey: '2026-11-13' })).toEqual(
+      archived,
+    );
+    expect(loadProgress(store, 'landen', { mode: 'archive', dateKey: '2026-11-14' })).toBeNull();
+    expect(loadProgress(store, 'landen', { mode: 'daily', dateKey: '2026-11-20' })?.puzzleKey).toBe(
+      '2026-11-20',
+    );
+  });
+
+  it('onthoudt per categorie de eerste eindscore van elke datum', () => {
+    const store = memoryStore();
+    expect(loadHistory(store, 'dieren')).toEqual({});
+    recordHistory(store, 'dieren', '2026-11-13', 4200);
+    recordHistory(store, 'dieren', '2026-11-14', 3100);
+    recordHistory(store, 'dieren', '2026-11-13', 7000);
+    expect(loadHistory(store, 'dieren')).toEqual({ '2026-11-13': 4200, '2026-11-14': 3100 });
+    expect(loadHistory(store, 'sport')).toEqual({});
   });
 });
 

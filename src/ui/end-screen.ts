@@ -15,11 +15,12 @@ export interface EndScreenOptions {
   shareUrl?: string;
 }
 
-/** "Dieren #12" (dagpuzzel) of "Dieren, onbeperkt #42". */
+/** "Dieren #12" (dagpuzzel), "Dieren #3, archief" of "Dieren, onbeperkt #42". */
 export function puzzleLabel(game: GameState): string {
-  return game.ref.mode === 'daily'
-    ? `${game.category.title} #${puzzleNumber(game.ref.dateKey)}`
-    : `${game.category.title}, onbeperkt #${game.ref.number}`;
+  const { ref, category } = game;
+  if (ref.mode === 'unlimited') return `${category.title}, onbeperkt #${ref.number}`;
+  const label = `${category.title} #${puzzleNumber(ref.dateKey)}`;
+  return ref.mode === 'archive' ? `${label}, archief` : label;
 }
 
 export function shareText(game: GameState, shareUrl?: string): string {
@@ -39,24 +40,34 @@ export function renderEndScreen(options: EndScreenOptions): HTMLElement {
   const total = totalScore(game);
   const depthKm = unitsToKm(total);
   const layer = layerAt(total);
-  const unlimited = game.ref.mode === 'unlimited';
+  const { ref } = game;
+  const unlimited = ref.mode === 'unlimited';
   const played = unlimited ? stats.unlimitedPlayed : stats.played;
   const sum = unlimited ? stats.unlimitedTotalScore : stats.totalScore;
   const average = played > 0 ? Math.round(sum / played) : 0;
+  // Archiefpuzzels hebben geen eigen statistieken: ze tellen nergens mee.
   const statCells: [string, number][] =
-    game.ref.mode === 'unlimited'
+    ref.mode === 'unlimited'
       ? [
           ['GESPEELD', played],
           ['GEMIDDELD', average],
           ['BESTE', stats.unlimitedBest],
         ]
-      : [
-          ['GESPEELD', played],
-          ['GEMIDDELD', average],
-          ['BESTE', stats.best],
-          ['STREAK', effectiveStreak(stats, game.ref.dateKey)],
-          ['LANGSTE', stats.longestStreak],
-        ];
+      : ref.mode === 'daily'
+        ? [
+            ['GESPEELD', played],
+            ['GEMIDDELD', average],
+            ['BESTE', stats.best],
+            ['STREAK', effectiveStreak(stats, ref.dateKey)],
+            ['LANGSTE', stats.longestStreak],
+          ]
+        : [];
+  const footer =
+    ref.mode === 'daily'
+      ? `<p class="next-puzzle">Morgen een nieuwe puzzel (om ${nextPuzzleLocalTime()} jouw tijd).</p>`
+      : ref.mode === 'archive'
+        ? '<p class="next-puzzle">Archiefpuzzels tellen niet mee voor je streak of statistieken.</p>'
+        : '';
 
   const el = document.createElement('div');
   el.className = 'end-screen';
@@ -85,13 +96,17 @@ export function renderEndScreen(options: EndScreenOptions): HTMLElement {
       <div class="end-actions">
         ${onNextPuzzle ? '<button type="button" class="btn btn--primary next-puzzle-btn">VOLGENDE PUZZEL ▼</button>' : ''}
         <button type="button" class="btn ${onNextPuzzle ? 'btn--ghost' : 'btn--primary'} share-btn">DEEL JE SCORE</button>
-        <button type="button" class="btn btn--ghost other-category-btn">ANDERE CATEGORIE</button>
+        <button type="button" class="btn btn--ghost other-category-btn">${ref.mode === 'archive' ? 'TERUG NAAR ARCHIEF' : 'ANDERE CATEGORIE'}</button>
       </div>
       <p class="share-feedback" aria-live="polite"></p>
-      <dl class="player-stats" aria-label="Jouw statistieken voor ${escapeHtml(game.category.title)}${unlimited ? ' (onbeperkt)' : ''}">
+      ${
+        statCells.length > 0
+          ? `<dl class="player-stats" aria-label="Jouw statistieken voor ${escapeHtml(game.category.title)}${unlimited ? ' (onbeperkt)' : ''}">
         ${statCells.map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('')}
-      </dl>
-      ${unlimited ? '' : `<p class="next-puzzle">Morgen een nieuwe puzzel (om ${nextPuzzleLocalTime()} jouw tijd).</p>`}
+      </dl>`
+          : ''
+      }
+      ${footer}
     </section>
   `;
 

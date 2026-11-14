@@ -23,7 +23,8 @@ npm run build        # tsc --noEmit + vite build → dist/
 ```
 
 Handig bij testen: `http://localhost:5173/?date=2026-11-14` forceert een andere dag,
-`?cat=dieren` opent direct de dagpuzzel van een categorie en `?cat=dieren&game=3` de onbeperkte
+`?cat=dieren` opent direct de dagpuzzel van een categorie, `?cat=dieren&archief=2026-11-13` een
+oude dagpuzzel uit het archief, en `?cat=dieren&game=3` de onbeperkte
 puzzel #3. De opslag staat in `localStorage` onder de sleutels
 `landenspel:*`, per categorie.
 

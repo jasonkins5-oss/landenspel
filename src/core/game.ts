@@ -10,10 +10,16 @@ export interface RoundResult {
   score: RoundScore;
 }
 
-export type GameMode = 'daily' | 'unlimited';
+/**
+ * Welke puzzel: de dagpuzzel van vandaag, een genummerde puzzel uit de onbeperkte modus, of
+ * een oude dagpuzzel uit het archief (dezelfde vragen als op die dag, maar zonder streak).
+ */
+export type PuzzleRef =
+  | { mode: 'daily'; dateKey: string }
+  | { mode: 'unlimited'; number: number }
+  | { mode: 'archive'; dateKey: string };
 
-/** Welke puzzel: de dagpuzzel van een datum, of een genummerde puzzel uit de onbeperkte modus. */
-export type PuzzleRef = { mode: 'daily'; dateKey: string } | { mode: 'unlimited'; number: number };
+export type GameMode = PuzzleRef['mode'];
 
 export interface GameState {
   category: Category;
@@ -23,7 +29,10 @@ export interface GameState {
   results: RoundResult[];
 }
 
-/** Seed van een puzzel. De dagpuzzel van Landen houdt de seed van versie 1. */
+/**
+ * Seed van een puzzel. De dagpuzzel van Landen houdt de seed van versie 1; een archiefpuzzel
+ * heeft dezelfde seed als de dagpuzzel van die datum.
+ */
 export function puzzleSeed(category: Pick<Category, 'id'>, ref: PuzzleRef): string {
   if (ref.mode === 'unlimited') return `${category.id}:onbeperkt:${ref.number}`;
   return category.id === 'landen' ? ref.dateKey : `${category.id}:${ref.dateKey}`;
@@ -31,7 +40,7 @@ export function puzzleSeed(category: Pick<Category, 'id'>, ref: PuzzleRef): stri
 
 /** Sleutel waaronder de voortgang van deze puzzel wordt herkend ("2026-11-13" of "42"). */
 export function puzzleKey(ref: PuzzleRef): string {
-  return ref.mode === 'daily' ? ref.dateKey : String(ref.number);
+  return ref.mode === 'unlimited' ? String(ref.number) : ref.dateKey;
 }
 
 export function createGame(category: Category, ref: PuzzleRef): GameState {

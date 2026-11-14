@@ -40,6 +40,13 @@ describe('createGame', () => {
     expect(ids({ mode: 'daily', dateKey: '2026-11-14' })).not.toEqual(ids(day));
   });
 
+  it('een archiefpuzzel heeft dezelfde vragen als de dagpuzzel van die datum', () => {
+    const archive: PuzzleRef = { mode: 'archive', dateKey: '2026-11-13' };
+    expect(puzzleSeed(landen, archive)).toBe(puzzleSeed(landen, day));
+    expect(puzzleKey(archive)).toBe('2026-11-13');
+    expect(ids(archive)).toEqual(ids(day));
+  });
+
   it('onbeperkte puzzels zijn deterministisch per nummer en verschillen van de dagpuzzel', () => {
     const u42: PuzzleRef = { mode: 'unlimited', number: 42 };
     expect(puzzleSeed(dieren, u42)).toBe('dieren:onbeperkt:42');
