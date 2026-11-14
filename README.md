@@ -50,13 +50,12 @@ en `npm run data:validate`. Vragen met minder dan 25 antwoorden worden overgesla
 2. **SQL Editor → New query**: plak `supabase/schema.sql` en klik *Run*.
 3. **Project Settings → API**: kopieer de *Project URL* en de publieke sleutel (*anon* of
    *publishable*). Nooit de *service_role*/*secret* sleutel gebruiken.
-4. Lokaal: maak `.env.local` met
+4. Zet beide in `.env.production` (staat in git; de live build gebruikt dit bestand):
    ```
    VITE_SUPABASE_URL=https://<project>.supabase.co
    VITE_SUPABASE_ANON_KEY=<publieke sleutel>
    ```
-5. Voor de live site: GitHub → **Settings → Secrets and variables → Actions → Variables** →
-   dezelfde twee namen en waarden. De workflow geeft ze door aan de build.
+   Voor de dev-server kun je dezelfde regels in `.env.local` zetten (niet in git).
 
 ## Deploy
 
